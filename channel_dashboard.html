@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>电商渠道业绩监控系统</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<style>
+:root{
+  --primary:#4f46e5;--primary-light:#818cf8;--primary-dark:#3730a3;
+  --success:#10b981;--warning:#f59e0b;--danger:#ef4444;--info:#3b82f6;
+  --bg:#f1f5f9;--card:#fff;--border:#e2e8f0;--text:#1e293b;--muted:#64748b;
+  --sidebar-w:240px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;}
+
+/* ── Sidebar ─────────────────────────── */
+.sidebar{width:var(--sidebar-w);background:linear-gradient(180deg,#1e293b 0%,#0f172a 100%);
+  color:#e2e8f0;position:fixed;top:0;left:0;height:100vh;display:flex;flex-direction:column;
+  z-index:100;transition:transform .3s;}
+.logo{padding:24px 20px 16px;border-bottom:1px solid #334155;}
+.logo h1{font-size:15px;font-weight:700;color:#fff;line-height:1.3;}
+.logo p{font-size:11px;color:#94a3b8;margin-top:4px;}
+.nav{padding:12px 0;flex:1;overflow-y:auto;}
+.nav-group-title{font-size:10px;color:#475569;text-transform:uppercase;letter-spacing:.08em;
+  padding:12px 20px 6px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;cursor:pointer;
+  transition:all .2s;font-size:13px;color:#94a3b8;border-left:3px solid transparent;}
+.nav-item:hover{background:rgba(255,255,255,.06);color:#e2e8f0;}
+.nav-item.active{background:rgba(79,70,229,.2);color:#818cf8;border-left-color:#818cf8;}
+.nav-item .icon{width:16px;text-align:center;font-size:15px;}
+.sidebar-footer{padding:16px 20px;border-top:1px solid #334155;font-size:11px;color:#475569;}
+
+/* ── Main ─────────────────────────────── */
+.main{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-height:100vh;}
+.topbar{background:var(--card);border-bottom:1px solid var(--border);padding:0 24px;
+  height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;}
+.topbar h2{font-size:16px;font-weight:600;}
+.topbar-right{display:flex;align-items:center;gap:12px;}
+.menu-btn{display:none;background:none;border:none;font-size:20px;cursor:pointer;}
+.badge{background:var(--primary);color:#fff;font-size:10px;padding:2px 8px;border-radius:99px;}
+
+/* ── Content ─────────────────────────── */
+.content{padding:24px;flex:1;}
+.page{display:none;}
+.page.active{display:block;}
+
+/* ── Filters bar ─────────────────────── */
+.filter-bar{background:var(--card);border:1px solid var(--border);border-radius:12px;
+  padding:16px 20px;margin-bottom:20px;display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px;}
+.filter-group{display:flex;flex-direction:column;gap:5px;}
+.filter-group label{font-size:11px;color:var(--muted);font-weight:600;}
+.filter-group select,.filter-group input{
+  border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;
+  color:var(--text);background:#fff;cursor:pointer;outline:none;min-width:100px;}
+.filter-group select:focus,.filter-group input:focus{border-color:var(--primary);}
+.btn{padding:7px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;
+  border:none;transition:all .2s;display:inline-flex;align-items:center;gap:6px;}
+.btn-primary{background:var(--primary);color:#fff;}
+.btn-primary:hover{background:var(--primary-dark);}
+.btn-outline{background:#fff;color:var(--primary);border:1px solid var(--primary);}
+.btn-outline:hover{background:#f0f0ff;}
+.btn-success{background:var(--success);color:#fff;}
+.btn-danger{background:var(--danger);color:#fff;}
+.btn-sm{padding:4px 12px;font-size:12px;}
+
+/* ── KPI Cards ────────────────────────── */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;}
+.kpi-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;
+  position:relative;overflow:hidden;cursor:default;transition:box-shadow .2s;}
+.kpi-card:hover{box-shadow:0 4px 20px rgba(0,0,0,.08);}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;background:var(--accent,var(--primary));}
+.kpi-label{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;}
+.kpi-value{font-size:26px;font-weight:700;margin:8px 0 6px;color:var(--text);}
+.kpi-sub{font-size:12px;color:var(--muted);}
+.kpi-rate{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;
+  padding:3px 8px;border-radius:99px;margin-top:4px;}
+.rate-up{background:#d1fae5;color:#059669;}
+.rate-down{background:#fee2e2;color:#dc2626;}
+.rate-mid{background:#fef9c3;color:#b45309;}
+
+/* ── Chart Row ────────────────────────── */
+.chart-row{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:24px;}
+.chart-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;}
+.chart-card h3{font-size:14px;font-weight:600;margin-bottom:4px;}
+.chart-card .chart-sub{font-size:11px;color:var(--muted);margin-bottom:14px;}
+.chart-box{height:300px;}
+
+/* ── Section title ─────────────────────── */
+.section-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px;
+  display:flex;align-items:center;gap:8px;}
+.section-title::before{content:'';width:4px;height:16px;background:var(--primary);border-radius:2px;}
+
+/* ── Table ───────────────────────────── */
+.table-wrap{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:24px;}
+.table-head{padding:16px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;border-bottom:1px solid var(--border);}
+.table-head h3{font-size:14px;font-weight:600;}
+.search-box{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.search-input{border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;width:180px;outline:none;}
+.search-input:focus{border-color:var(--primary);}
+.filter-select{border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;outline:none;cursor:pointer;}
+table{width:100%;border-collapse:collapse;}
+th{background:#f8fafc;padding:10px 14px;font-size:12px;font-weight:700;color:var(--muted);
+  text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;}
+td{padding:11px 14px;font-size:13px;border-bottom:1px solid #f1f5f9;vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:#f8fafc;}
+.progress-bar{height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;min-width:60px;}
+.progress-fill{height:100%;border-radius:3px;transition:width .5s;}
+.status-badge{font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px;}
+.s-good{background:#d1fae5;color:#059669;}
+.s-mid{background:#fef9c3;color:#b45309;}
+.s-low{background:#fee2e2;color:#dc2626;}
+.pagination{display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;border-top:1px solid var(--border);}
+.page-btn{width:32px;height:32px;border:1px solid var(--border);border-radius:6px;background:#fff;
+  cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;}
+.page-btn.active{background:var(--primary);color:#fff;border-color:var(--primary);}
+.page-btn:hover:not(.active){background:#f1f5f9;}
+.page-info{font-size:12px;color:var(--muted);}
+
+/* ── Form ────────────────────────────── */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+.form-group{display:flex;flex-direction:column;gap:6px;}
+.form-group.full{grid-column:1/-1;}
+.form-group label{font-size:12px;font-weight:600;color:var(--muted);}
+.form-control{border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;transition:border .2s;}
+.form-control:focus{border-color:var(--primary);}
+.form-section{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:20px;}
+.form-section h3{font-size:14px;font-weight:600;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--border);}
+
+/* ── Trend fullchart ─────────────────── */
+.channel-charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;}
+.ch-chart-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;}
+.ch-chart-card h4{font-size:13px;font-weight:600;margin-bottom:12px;color:var(--text);}
+
+/* ── YTD summary table ───────────────── */
+.ytd-table td:first-child{font-weight:600;}
+
+/* ── Modal ───────────────────────────── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:none;align-items:center;justify-content:center;padding:20px;}
+.modal-overlay.open{display:flex;}
+.modal{background:#fff;border-radius:16px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;}
+.modal-header{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
+.modal-header h3{font-size:16px;font-weight:700;}
+.modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1;}
+.modal-body{padding:24px;}
+.modal-footer{padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;}
+
+/* ── Toast ───────────────────────────── */
+.toast{position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;padding:12px 20px;
+  border-radius:10px;font-size:13px;z-index:500;transform:translateY(80px);opacity:0;
+  transition:all .3s;display:flex;align-items:center;gap:8px;}
+.toast.show{transform:translateY(0);opacity:1;}
+
+/* ── Responsive ──────────────────────── */
+@media(max-width:1200px){
+  .kpi-grid{grid-template-columns:repeat(3,1fr);}
+  .chart-row{grid-template-columns:1fr;}
+  .channel-charts-grid{grid-template-columns:1fr;}
+}
+@media(max-width:900px){
+  .kpi-grid{grid-template-columns:repeat(2,1fr);}
+  .channel-charts-grid{grid-template-columns:1fr;}
+  .form-grid{grid-template-columns:1fr;}
+}
+@media(max-width:768px){
+  .sidebar{transform:translateX(-100%);}
+  .sidebar.open{transform:translateX(0);}
+  .main{margin-left:0;}
+  .menu-btn{display:block;}
+  .kpi-grid{grid-template-columns:1fr 1fr;}
+  .content{padding:16px;}
+  .filter-bar{gap:8px;}
+}
+@media(max-width:480px){
+  .kpi-grid{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside class="sidebar" id="sidebar">
+  <div class="logo">
+    <h1>📦 电商渠道监控</h1>
+    <p>业绩管理后台系统</p>
+  </div>
+  <nav class="nav">
+    <div class="nav-group-title">核心功能</div>
+    <div class="nav-item active" onclick="showPage('dashboard')">
+      <span class="icon">📊</span>数据看板
+    </div>
+    <div class="nav-item" onclick="showPage('trend')">
+      <span class="icon">📈</span>趋势分析
+    </div>
+    <div class="nav-item" onclick="showPage('channels')">
+      <span class="icon">🏪</span>渠道列表管理
+    </div>
+    <div class="nav-group-title">数据管理</div>
+    <div class="nav-item" onclick="showPage('kpi')">
+      <span class="icon">🎯</span>月度目标跟踪
+    </div>
+    <div class="nav-item" onclick="showPage('entry')">
+      <span class="icon">✏️</span>业绩录入/编辑
+    </div>
+  </nav>
+  <div class="sidebar-footer">数据更新至 2026-03-31</div>
+</aside>
+
+<!-- Main -->
+<div class="main">
+  <header class="topbar">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+      <h2 id="pageTitle">数据看板</h2>
+    </div>
+    <div class="topbar-right">
+      <span class="badge">2026 Q1</span>
+      <span style="font-size:12px;color:var(--muted)">ITO 渠道业绩监控</span>
+    </div>
+  </header>
+
+  <div class="content">
+
+    <!-- ══════════════ PAGE: DASHBOARD ══════════════ -->
+    <div class="page active" id="page-dashboard">
+
+      <!-- 筛选器 -->
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label>统计维度</label>
+          <select id="db-dim" onchange="refreshDashboard()">
+            <option value="ytd">YTD 累计（2026年1-3月）</option>
+            <option value="monthly">单月</option>
+          </select>
+        </div>
+        <div class="filter-group" id="db-year-wrap">
+          <label>年份</label>
+          <select id="db-year" onchange="refreshDashboard()">
+            <option value="2026">2026</option>
+            <option value="2025">2025</option>
+            <option value="2024">2024</option>
+          </select>
+        </div>
+        <div class="filter-group" id="db-month-wrap" style="display:none">
+          <label>月份</label>
+          <select id="db-month" onchange="refreshDashboard()">
+            <option value="01">1月</option><option value="02">2月</option>
+            <option value="03">3月</option><option value="04">4月</option>
+            <option value="05">5月</option><option value="06">6月</option>
+            <option value="07">7月</option><option value="08">8月</option>
+            <option value="09">9月</option><option value="10">10月</option>
+            <option value="11">11月</option><option value="12">12月</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>渠道筛选（趋势图）</label>
+          <select id="db-channel-filter" onchange="renderTrendChart()">
+            <option value="all">全部渠道</option>
+            <option value="tmall">天猫旗舰店</option>
+            <option value="douyin_luggage">抖音行李箱</option>
+            <option value="douyin_bag">抖音包袋</option>
+            <option value="douyin_biz">抖音云端商务</option>
+            <option value="jd">京东自营</option>
+            <option value="xhs">小红书</option>
+            <option value="douyin_live_luggage">达播-行李箱</option>
+            <option value="douyin_live_bag">达播-包袋</option>
+            <option value="xhs_live">小红书达播</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>趋势年份</label>
+          <select id="trend-year-filter" onchange="renderTrendChart()">
+            <option value="all">全部</option>
+            <option value="2026">2026</option>
+            <option value="2025">2025</option>
+            <option value="2024">2024</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- KPI卡片 -->
+      <div class="kpi-grid" id="kpiCards"></div>
+
+      <!-- 图表行 -->
+      <div class="chart-row">
+        <div class="chart-card">
+          <h3>各渠道实际 vs 目标对比</h3>
+          <div class="chart-sub" id="compareSubtitle">2026年1-3月YTD</div>
+          <div class="chart-box" id="compareChart"></div>
+        </div>
+        <div class="chart-card">
+          <h3>渠道销售占比</h3>
+          <div class="chart-sub" id="pieSubtitle">2026年1-3月YTD</div>
+          <div class="chart-box" id="pieChart"></div>
+        </div>
+      </div>
+
+      <!-- 趋势图 -->
+      <div class="chart-card" style="margin-bottom:24px;">
+        <h3>月度销售趋势</h3>
+        <div class="chart-sub">按渠道筛选历史走势</div>
+        <div class="chart-box" style="height:320px;" id="trendChart"></div>
+      </div>
+
+      <!-- YTD 汇总表 -->
+      <div class="table-wrap">
+        <div class="table-head">
+          <h3>2026年1-3月 YTD 渠道汇总</h3>
+          <span style="font-size:12px;color:var(--muted)">数据来源：电商渠道-销售数据（2026/1/1—2026/3/31）</span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>渠道名称</th>
+                <th>预算</th>
+                <th>目标</th>
+                <th>实际完成</th>
+                <th>目标达成率</th>
+                <th>去年同期</th>
+                <th>YOY</th>
+                <th>达成进度</th>
+              </tr>
+            </thead>
+            <tbody id="ytdTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════ PAGE: TREND ══════════════ -->
+    <div class="page" id="page-trend">
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label>年份范围</label>
+          <select id="trend-year-range" onchange="renderAllChannelCharts()">
+            <option value="all">全部（2024-2026）</option>
+            <option value="2026">仅2026</option>
+            <option value="2025">仅2025</option>
+            <option value="2025_2026">2025-2026</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>图表类型</label>
+          <select id="trend-chart-type" onchange="renderAllChannelCharts()">
+            <option value="bar">柱状图</option>
+            <option value="line">折线图</option>
+          </select>
+        </div>
+      </div>
+      <div class="channel-charts-grid" id="allChannelCharts"></div>
+    </div>
+
+    <!-- ══════════════ PAGE: CHANNELS ══════════════ -->
+    <div class="page" id="page-channels">
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label>统计年份</label>
+          <select id="ch-year" onchange="renderChannelList()">
+            <option value="2026">2026</option>
+            <option value="2025">2025</option>
+            <option value="2024">2024</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>起始月</label>
+          <select id="ch-month-start" onchange="renderChannelList()">
+            <option value="01">1月</option><option value="02">2月</option>
+            <option value="03">3月</option><option value="04">4月</option>
+            <option value="05">5月</option><option value="06">6月</option>
+            <option value="07">7月</option><option value="08">8月</option>
+            <option value="09">9月</option><option value="10">10月</option>
+            <option value="11">11月</option><option value="12">12月</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>截止月</label>
+          <select id="ch-month-end" onchange="renderChannelList()">
+            <option value="01">1月</option><option value="02">2月</option>
+            <option value="03" selected>3月</option><option value="04">4月</option>
+            <option value="05">5月</option><option value="06">6月</option>
+            <option value="07">7月</option><option value="08">8月</option>
+            <option value="09">9月</option><option value="10">10月</option>
+            <option value="11">11月</option><option value="12">12月</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>搜索渠道</label>
+          <input class="search-input" id="ch-search" placeholder="输入渠道名..." oninput="renderChannelList()">
+        </div>
+        <div class="filter-group">
+          <label>达成状态</label>
+          <select class="filter-select" id="ch-status-filter" onchange="renderChannelList()">
+            <option value="">全部</option>
+            <option value="good">超额完成</option>
+            <option value="mid">基本达标</option>
+            <option value="low">偏低</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="openModal()">＋ 新增渠道</button>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-head">
+          <h3>渠道业绩列表</h3>
+          <div id="ch-date-label" style="font-size:12px;color:var(--muted)"></div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>渠道名称</th>
+                <th>筛选期间实际销售</th>
+                <th>同期目标</th>
+                <th>目标达成率</th>
+                <th>去年同期</th>
+                <th>YOY</th>
+                <th>状态</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="channelTableBody"></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="channelPagination"></div>
+      </div>
+    </div>
+
+    <!-- ══════════════ PAGE: KPI ══════════════ -->
+    <div class="page" id="page-kpi">
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label>查看月份</label>
+          <select id="kpi-month-sel" onchange="renderKpiPage()">
+            <option value="2026-04">2026年4月</option>
+            <option value="2026-03">2026年3月</option>
+            <option value="2026-02">2026年2月</option>
+            <option value="2026-01">2026年1月</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <div class="table-head">
+          <h3 id="kpiPageTitle">2026年4月 月度目标看板</h3>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>渠道</th>
+                <th>预算</th>
+                <th>目标（预算）</th>
+                <th>预估/实际</th>
+                <th>目标达成率</th>
+                <th>去年同期</th>
+                <th>YOY</th>
+              </tr>
+            </thead>
+            <tbody id="kpiTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="chart-card">
+        <h3>月度预算 vs 目标 vs 预估</h3>
+        <div class="chart-box" style="height:340px;" id="kpiBarChart"></div>
+      </div>
+    </div>
+
+    <!-- ══════════════ PAGE: ENTRY ══════════════ -->
+    <div class="page" id="page-entry">
+      <div class="form-section">
+        <h3>📝 业绩数据录入 / 编辑</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>渠道名称 *</label>
+            <select class="form-control" id="f-channel">
+              <option value="">请选择渠道</option>
+              <option>天猫旗舰店</option>
+              <option>抖音行李箱</option>
+              <option>抖音包袋</option>
+              <option>抖音云端商务</option>
+              <option>京东自营</option>
+              <option>小红书</option>
+              <option>达播-行李箱</option>
+              <option>达播-包袋</option>
+              <option>小红书达播</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>年份 *</label>
+            <select class="form-control" id="f-year">
+              <option>2026</option><option>2025</option><option>2024</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>月份 *</label>
+            <select class="form-control" id="f-month">
+              <option value="01">1月</option><option value="02">2月</option>
+              <option value="03">3月</option><option value="04">4月</option>
+              <option value="05">5月</option><option value="06">6月</option>
+              <option value="07">7月</option><option value="08">8月</option>
+              <option value="09">9月</option><option value="10">10月</option>
+              <option value="11">11月</option><option value="12">12月</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>实际销售额（元）*</label>
+            <input class="form-control" type="number" id="f-actual" placeholder="例：1234567">
+          </div>
+          <div class="form-group">
+            <label>预算金额（元）</label>
+            <input class="form-control" type="number" id="f-budget" placeholder="可选">
+          </div>
+          <div class="form-group">
+            <label>目标金额（元）</label>
+            <input class="form-control" type="number" id="f-target" placeholder="可选">
+          </div>
+          <div class="form-group full">
+            <label>备注</label>
+            <input class="form-control" id="f-note" placeholder="填写说明信息...">
+          </div>
+        </div>
+        <div style="margin-top:20px;display:flex;gap:10px;">
+          <button class="btn btn-primary" onclick="submitForm()">💾 保存数据</button>
+          <button class="btn btn-outline" onclick="resetForm()">🔄 重置</button>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h3>🔍 历史数据查询</h3>
+        <div class="filter-bar" style="border:none;padding:0;margin:0 0 16px;">
+          <div class="filter-group">
+            <label>渠道</label>
+            <select id="q-channel" onchange="queryHistory()">
+              <option value="all">全部</option>
+              <option value="tmall">天猫旗舰店</option>
+              <option value="douyin_luggage">抖音行李箱</option>
+              <option value="douyin_bag">抖音包袋</option>
+              <option value="douyin_biz">抖音云端商务</option>
+              <option value="jd">京东自营</option>
+              <option value="xhs">小红书</option>
+              <option value="douyin_live_luggage">达播-行李箱</option>
+              <option value="douyin_live_bag">达播-包袋</option>
+              <option value="xhs_live">小红书达播</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>年份</label>
+            <select id="q-year" onchange="queryHistory()">
+              <option value="all">全部</option>
+              <option value="2026">2026</option>
+              <option value="2025">2025</option>
+              <option value="2024">2024</option>
+            </select>
+          </div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr><th>渠道</th><th>年月</th><th>实际销售额</th></tr>
+            </thead>
+            <tbody id="historyTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- .content -->
+</div><!-- .main -->
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">新增渠道数据</h3>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>渠道名称</label>
+          <input class="form-control" id="m-channel" placeholder="渠道名称">
+        </div>
+        <div class="form-group">
+          <label>统计月份</label>
+          <input class="form-control" id="m-month" type="month" value="2026-04">
+        </div>
+        <div class="form-group">
+          <label>实际销售额（元）</label>
+          <input class="form-control" id="m-actual" type="number" placeholder="0">
+        </div>
+        <div class="form-group">
+          <label>目标金额（元）</label>
+          <input class="form-control" id="m-target" type="number" placeholder="0">
+        </div>
+        <div class="form-group full">
+          <label>备注</label>
+          <input class="form-control" id="m-note" placeholder="可选">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveModal()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast">✅ 操作成功</div>
+
+<script>
+// ══════════════════════════════════════════
+//  RAW DATA  (from channel_data.json)
+// ══════════════════════════════════════════
+const RAW = {
+  "monthly": {
+    "tmall": [{"month":"2024-01","sales":7433191},{"month":"2024-02","sales":3220882},{"month":"2024-03","sales":5162330},{"month":"2024-04","sales":5063796},{"month":"2024-05","sales":9627614},{"month":"2024-06","sales":11033673},{"month":"2024-07","sales":8324291},{"month":"2024-08","sales":10913847},{"month":"2024-09","sales":8423143},{"month":"2024-10","sales":12163501},{"month":"2024-11","sales":11471704},{"month":"2024-12","sales":6994172},{"month":"2025-01","sales":9621604},{"month":"2025-02","sales":5103710},{"month":"2025-03","sales":5604446},{"month":"2025-04","sales":6468383},{"month":"2025-05","sales":13347171},{"month":"2025-06","sales":14175881},{"month":"2025-07","sales":10006383},{"month":"2025-08","sales":13486689},{"month":"2025-09","sales":11475434},{"month":"2025-10","sales":14910279},{"month":"2025-11","sales":10108042},{"month":"2025-12","sales":8213555},{"month":"2026-01","sales":11694990},{"month":"2026-02","sales":9728226},{"month":"2026-03","sales":9028293}],
+    "douyin_luggage": [{"month":"2024-01","sales":4928694},{"month":"2024-02","sales":1597904},{"month":"2024-03","sales":1866896},{"month":"2024-04","sales":4098275},{"month":"2024-05","sales":3005660},{"month":"2024-06","sales":4309102},{"month":"2024-07","sales":4727712},{"month":"2024-08","sales":2665638},{"month":"2024-09","sales":1989023},{"month":"2024-10","sales":2260492},{"month":"2024-11","sales":1967050},{"month":"2024-12","sales":3508491},{"month":"2025-01","sales":4587549},{"month":"2025-02","sales":2350008},{"month":"2025-03","sales":1943484},{"month":"2025-04","sales":4617153},{"month":"2025-05","sales":3597336},{"month":"2025-06","sales":3764587},{"month":"2025-07","sales":3999195},{"month":"2025-08","sales":2880682},{"month":"2025-09","sales":2125044},{"month":"2025-10","sales":5065019},{"month":"2025-11","sales":1844416},{"month":"2025-12","sales":3240770},{"month":"2026-01","sales":4964519},{"month":"2026-02","sales":3231860},{"month":"2026-03","sales":2622799}],
+    "douyin_bag": [{"month":"2024-08","sales":38204},{"month":"2024-09","sales":107896},{"month":"2024-10","sales":136043},{"month":"2024-11","sales":830368},{"month":"2024-12","sales":371761},{"month":"2025-01","sales":624446},{"month":"2025-02","sales":479876},{"month":"2025-03","sales":343915},{"month":"2025-04","sales":382436},{"month":"2025-05","sales":345816},{"month":"2025-06","sales":558341},{"month":"2025-07","sales":989156},{"month":"2025-08","sales":782054},{"month":"2025-09","sales":416624},{"month":"2025-10","sales":821038},{"month":"2025-11","sales":790870},{"month":"2025-12","sales":797920},{"month":"2026-01","sales":1169748},{"month":"2026-02","sales":674176},{"month":"2026-03","sales":893640}],
+    "douyin_biz": [{"month":"2026-01","sales":1988},{"month":"2026-02","sales":92268},{"month":"2026-03","sales":81696}],
+    "jd": [{"month":"2024-01","sales":2387829},{"month":"2024-02","sales":3087576},{"month":"2024-03","sales":1410935},{"month":"2024-04","sales":1751566},{"month":"2024-05","sales":2220056},{"month":"2024-06","sales":3277174},{"month":"2024-07","sales":2379261},{"month":"2024-08","sales":2369484},{"month":"2024-09","sales":2349837},{"month":"2024-10","sales":2479256},{"month":"2024-11","sales":2588737},{"month":"2024-12","sales":2069749},{"month":"2025-01","sales":3753392},{"month":"2025-02","sales":1984612},{"month":"2025-03","sales":1759199},{"month":"2025-04","sales":2215541},{"month":"2025-05","sales":2710567},{"month":"2025-06","sales":4010300},{"month":"2025-07","sales":2528295},{"month":"2025-08","sales":3121121},{"month":"2025-09","sales":3057010},{"month":"2025-10","sales":3627100},{"month":"2025-11","sales":3073830},{"month":"2025-12","sales":2019453},{"month":"2026-01","sales":3130312},{"month":"2026-02","sales":3632576},{"month":"2026-03","sales":2841595}],
+    "xhs": [{"month":"2024-01","sales":446819},{"month":"2024-02","sales":107420},{"month":"2024-03","sales":380432},{"month":"2024-04","sales":526622},{"month":"2024-05","sales":356754},{"month":"2024-06","sales":635268},{"month":"2024-07","sales":1084842},{"month":"2024-08","sales":574318},{"month":"2024-09","sales":585014},{"month":"2024-10","sales":732383},{"month":"2024-11","sales":527581},{"month":"2024-12","sales":696089},{"month":"2025-01","sales":801317},{"month":"2025-02","sales":364556},{"month":"2025-03","sales":377386},{"month":"2025-04","sales":852317},{"month":"2025-05","sales":362517},{"month":"2025-06","sales":744808},{"month":"2025-07","sales":921880},{"month":"2025-08","sales":447957},{"month":"2025-09","sales":255253},{"month":"2025-10","sales":250815},{"month":"2025-11","sales":182152},{"month":"2025-12","sales":143381},{"month":"2026-01","sales":226426},{"month":"2026-02","sales":210364},{"month":"2026-03","sales":137800}],
+    "douyin_live_luggage": [{"month":"2026-01","sales":562667},{"month":"2026-02","sales":195128},{"month":"2026-03","sales":242279}],
+    "douyin_live_bag": [{"month":"2026-01","sales":2786},{"month":"2026-02","sales":3070},{"month":"2026-03","sales":6774}],
+    "xhs_live": [{"month":"2026-01","sales":49590},{"month":"2026-02","sales":20496},{"month":"2026-03","sales":22682}]
+  },
+  "ytd": [
+    {"name":"天猫","budget":27366420,"target":28920000,"actual":30451509,"last_year":20177850},
+    {"name":"抖音自播汇总","budget":13881233,"target":16095930,"actual":13732694,"last_year":10241948},
+    {"name":"抖音ITO旗舰店（摩登新贵女）","budget":10383981,"target":11789349,"actual":10819178,"last_year":8802512},
+    {"name":"抖音ITO官方旗舰店（轻熟质享客）","budget":2569831,"target":3161452,"actual":2737564,"last_year":1439437},
+    {"name":"抖音ito箱包旗舰店（云端商务家）","budget":927421,"target":1145129,"actual":175952,"last_year":0},
+    {"name":"京东自营","budget":8851775,"target":10595015,"actual":9604483,"last_year":7508912},
+    {"name":"小红书自营","budget":423000,"target":427000,"actual":574590,"last_year":1528365},
+    {"name":"抖音达播-行李箱","budget":433358,"target":437617,"actual":1000074,"last_year":0},
+    {"name":"抖音达播-包袋","budget":46842,"target":47423,"actual":12630,"last_year":0},
+    {"name":"小红书达播","budget":118386,"target":119999,"actual":92768,"last_year":0},
+    {"name":"TTL","budget":51121014,"target":56642984,"actual":55468748,"last_year":39457075}
+  ],
+  "monthly_kpi": [
+    {"name":"天猫","budget":8400000,"target":8157000,"actual_est":0,"last_year":6468383},
+    {"name":"抖音自播汇总","budget":5000000,"target":4621553,"actual_est":0,"last_year":4786643},
+    {"name":"抖音ITO旗舰店（摩登新贵女）","budget":3500000,"target":3501824,"actual_est":0,"last_year":4529599},
+    {"name":"抖音ITO官方旗舰店（轻熟质享客）","budget":800000,"target":865405,"actual_est":0,"last_year":257044},
+    {"name":"抖音ito箱包旗舰店（云端商务家）","budget":700000,"target":254324,"actual_est":0,"last_year":0},
+    {"name":"京东自营","budget":2780000,"target":2780000,"actual_est":0,"last_year":2215541},
+    {"name":"小红书自营","budget":340000,"target":340000,"actual_est":0,"last_year":852317},
+    {"name":"抖音达播-行李箱","budget":632820,"target":632820,"actual_est":632820,"last_year":87554},
+    {"name":"抖音达播-包袋","budget":58740,"target":58740,"actual_est":58740,"last_year":125392},
+    {"name":"小红书达播","budget":160020,"target":160020,"actual_est":160020,"last_year":0},
+    {"name":"TTL","budget":17371580,"target":16750133,"actual_est":851580,"last_year":14535831}
+  ]
+};
+
+const CH_LABELS = {
+  tmall:'天猫旗舰店', douyin_luggage:'抖音行李箱', douyin_bag:'抖音包袋',
+  douyin_biz:'抖音云端商务', jd:'京东自营', xhs:'小红书',
+  douyin_live_luggage:'达播-行李箱', douyin_live_bag:'达播-包袋', xhs_live:'小红书达播'
+};
+
+const CH_COLORS = {
+  tmall:'#e85a3a', douyin_luggage:'#3b82f6', douyin_bag:'#8b5cf6',
+  douyin_biz:'#06b6d4', jd:'#e11d48', xhs:'#f59e0b',
+  douyin_live_luggage:'#10b981', douyin_live_bag:'#6366f1', xhs_live:'#f97316'
+};
+
+// ── Helpers ──────────────────────────────
+const fmt = v => v >= 10000 ? (v/10000).toFixed(1)+'万' : v.toLocaleString('zh-CN');
+const fmtFull = v => '¥'+Math.round(v).toLocaleString('zh-CN');
+const pct = (a,b) => b > 0 ? (a/b*100).toFixed(1)+'%' : '—';
+const rateClass = r => r >= 100 ? 'rate-up' : r >= 85 ? 'rate-mid' : 'rate-down';
+const statusClass = r => r >= 100 ? 's-good' : r >= 85 ? 's-mid' : 's-low';
+const statusText = r => r >= 100 ? '超额完成' : r >= 85 ? '基本达标' : '偏低';
+
+function getSalesInRange(key, yearStr, startM, endM) {
+  const rows = RAW.monthly[key] || [];
+  return rows.filter(r => {
+    const [y, m] = r.month.split('-');
+    return y === yearStr && m >= startM && m <= endM;
+  }).reduce((s,r) => s + r.sales, 0);
+}
+
+function getPrevYearSales(key, yearStr, startM, endM) {
+  const prevYear = String(parseInt(yearStr) - 1);
+  return getSalesInRange(key, prevYear, startM, endM);
+}
+
+// ── Charts instance cache ─────────────────
+const _charts = {};
+function getChart(id) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  if (!_charts[id]) _charts[id] = echarts.init(el);
+  return _charts[id];
+}
+window.addEventListener('resize', () => Object.values(_charts).forEach(c => c && c.resize()));
+
+// ══════════════════════════════════════════
+//  NAVIGATION
+// ══════════════════════════════════════════
+const pageTitles = {
+  dashboard:'数据看板', trend:'趋势分析', channels:'渠道列表管理',
+  kpi:'月度目标跟踪', entry:'业绩录入/编辑'
+};
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => {
+    if (n.getAttribute('onclick') && n.getAttribute('onclick').includes("'"+id+"'"))
+      n.classList.add('active');
+  });
+  document.getElementById('pageTitle').textContent = pageTitles[id] || '';
+
+  if (id === 'dashboard') { refreshDashboard(); renderTrendChart(); }
+  else if (id === 'trend') renderAllChannelCharts();
+  else if (id === 'channels') renderChannelList();
+  else if (id === 'kpi') renderKpiPage();
+  else if (id === 'entry') queryHistory();
+  document.getElementById('sidebar').classList.remove('open');
+}
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+}
+
+// ══════════════════════════════════════════
+//  DASHBOARD
+// ══════════════════════════════════════════
+function refreshDashboard() {
+  const dim = document.getElementById('db-dim').value;
+  const year = document.getElementById('db-year').value;
+  const monthWrap = document.getElementById('db-month-wrap');
+  const yearWrap = document.getElementById('db-year-wrap');
+  yearWrap.style.display = dim === 'ytd' ? 'none' : '';
+  monthWrap.style.display = dim === 'monthly' ? '' : 'none';
+
+  if (dim === 'ytd') {
+    renderKpiCards_ytd();
+    renderCompareChart_ytd();
+    renderPieChart_ytd();
+    renderYtdTable();
+  } else {
+    const month = document.getElementById('db-month').value;
+    renderKpiCards_monthly(year, month);
+    renderCompareChart_monthly(year, month);
+    renderPieChart_monthly(year, month);
+    renderYtdTable();
+  }
+}
+
+function renderKpiCards_ytd() {
+  const ttl = RAW.ytd.find(d => d.name === 'TTL') || {};
+  const actual = ttl.actual || 0;
+  const target = ttl.target || 0;
+  const budget = ttl.budget || 0;
+  const lastYr = ttl.last_year || 0;
+  const rate = target > 0 ? actual / target * 100 : 0;
+  const yoy = lastYr > 0 ? (actual - lastYr) / lastYr * 100 : 0;
+
+  // Channel count
+  const exceedCount = RAW.ytd.filter(d => d.name !== 'TTL' && d.actual >= d.target).length;
+  const totalCh = RAW.ytd.filter(d => d.name !== 'TTL').length;
+
+  const cards = [
+    { label:'YTD 实际销售', value:fmt(actual)+'元', sub:'2026年1-3月累计', accent:'#4f46e5',
+      rate: rate.toFixed(1)+'%', rateType: rate >= 100 ? 'up' : 'down', rateLabel:'目标达成率' },
+    { label:'年度目标', value:fmt(target)+'元', sub:'2026全年目标', accent:'#3b82f6',
+      rate: pct(actual, target), rateType: rate >= 100 ? 'up' : 'mid', rateLabel:'完成进度' },
+    { label:'YOY 同比增长', value:(yoy > 0 ? '+' : '') + yoy.toFixed(1)+'%', sub:'vs 2025年同期 '+fmt(lastYr)+'元',
+      accent: yoy >= 0 ? '#10b981' : '#ef4444',
+      rate: fmtFull(actual - lastYr), rateType: yoy >= 0 ? 'up' : 'down', rateLabel:'增量' },
+    { label:'超额达成渠道', value:exceedCount+' / '+totalCh, sub:'渠道达成情况', accent:'#f59e0b',
+      rate: (exceedCount/totalCh*100).toFixed(0)+'%', rateType: exceedCount >= totalCh/2 ? 'up' : 'mid', rateLabel:'达成占比' }
+  ];
+  const html = cards.map(c => `
+    <div class="kpi-card" style="--accent:${c.accent}">
+      <div class="kpi-label">${c.label}</div>
+      <div class="kpi-value">${c.value}</div>
+      <div class="kpi-sub">${c.sub}</div>
+      <div class="kpi-rate rate-${c.rateType}">${c.rateLabel}：${c.rate}</div>
+    </div>`).join('');
+  document.getElementById('kpiCards').innerHTML = html;
+  document.getElementById('compareSubtitle').textContent = '2026年1-3月YTD';
+  document.getElementById('pieSubtitle').textContent = '2026年1-3月YTD';
+}
+
+function renderKpiCards_monthly(year, month) {
+  const ym = `${year}-${month}`;
+  const keys = Object.keys(RAW.monthly);
+  const totals = {};
+  keys.forEach(k => {
+    const row = RAW.monthly[k].find(r => r.month === ym);
+    totals[k] = row ? row.sales : 0;
+  });
+  const total = Object.values(totals).reduce((s,v) => s+v, 0);
+  // prev year same month
+  const prevYm = `${parseInt(year)-1}-${month}`;
+  let prevTotal = 0;
+  keys.forEach(k => {
+    const row = RAW.monthly[k].find(r => r.month === prevYm);
+    prevTotal += row ? row.sales : 0;
+  });
+  const yoy = prevTotal > 0 ? (total - prevTotal) / prevTotal * 100 : 0;
+  const monthLabel = `${year}年${parseInt(month)}月`;
+
+  const cards = [
+    { label:'当月实际销售', value:fmt(total)+'元', sub:monthLabel, accent:'#4f46e5',
+      rate:'¥'+total.toLocaleString('zh-CN'), rateType:'up', rateLabel:'精确金额' },
+    { label:'渠道数量', value:keys.filter(k=>totals[k]>0).length+' 个活跃', sub:'有销售记录渠道', accent:'#3b82f6',
+      rate:keys.length+'个总渠道', rateType:'mid', rateLabel:'总渠道' },
+    { label:'YOY 同比', value:(yoy>0?'+':'')+yoy.toFixed(1)+'%', sub:'vs '+parseInt(year)-1+'年同期', accent: yoy>=0?'#10b981':'#ef4444',
+      rate:fmtFull(prevTotal), rateType:yoy>=0?'up':'down', rateLabel:'去年同期' },
+    { label:'最高渠道', value:CH_LABELS[Object.keys(totals).sort((a,b)=>totals[b]-totals[a])[0]]||'—',
+      sub:'当月销售最高', accent:'#f59e0b',
+      rate:fmt(Math.max(...Object.values(totals)))+'元', rateType:'up', rateLabel:'销售额' }
+  ];
+  document.getElementById('kpiCards').innerHTML = cards.map(c=>`
+    <div class="kpi-card" style="--accent:${c.accent}">
+      <div class="kpi-label">${c.label}</div>
+      <div class="kpi-value">${c.value}</div>
+      <div class="kpi-sub">${c.sub}</div>
+      <div class="kpi-rate rate-${c.rateType}">${c.rateLabel}：${c.rate}</div>
+    </div>`).join('');
+  document.getElementById('compareSubtitle').textContent = monthLabel + ' 各渠道对比';
+  document.getElementById('pieSubtitle').textContent = monthLabel + ' 渠道占比';
+}
+
+function renderCompareChart_ytd() {
+  const data = RAW.ytd.filter(d => d.name !== 'TTL');
+  const chart = getChart('compareChart');
+  if (!chart) return;
+  chart.setOption({
+    tooltip:{ trigger:'axis', formatter: p => {
+      return p[0].name+'<br>'+p.map(i=>`${i.marker}${i.seriesName}：¥${Math.round(i.value).toLocaleString()}`).join('<br>');
+    }},
+    legend:{ bottom:0, textStyle:{fontSize:11} },
+    grid:{ left:10, right:10, bottom:40, top:10, containLabel:true },
+    xAxis:{ type:'category', data:data.map(d=>d.name), axisLabel:{fontSize:10, rotate:15, interval:0} },
+    yAxis:{ type:'value', axisLabel:{formatter:v=>fmt(v)} },
+    series:[
+      { name:'目标', type:'bar', data:data.map(d=>d.target), itemStyle:{color:'#c7d2fe'}, barMaxWidth:18 },
+      { name:'实际', type:'bar', data:data.map(d=>d.actual), barMaxWidth:18,
+        itemStyle:{color: p => p.value >= data[p.dataIndex].target ? '#10b981' : '#ef4444'} }
+    ]
+  }, true);
+}
+
+function renderCompareChart_monthly(year, month) {
+  const ym = `${year}-${month}`;
+  const keys = Object.keys(RAW.monthly);
+  const chart = getChart('compareChart');
+  if (!chart) return;
+  chart.setOption({
+    tooltip:{ trigger:'axis', formatter: p => p[0].name+'<br>'+p.map(i=>`${i.marker}${i.seriesName}：¥${Math.round(i.value).toLocaleString()}`).join('<br>') },
+    legend:{ bottom:0, textStyle:{fontSize:11} },
+    grid:{ left:10, right:10, bottom:40, top:10, containLabel:true },
+    xAxis:{ type:'category', data:keys.map(k=>CH_LABELS[k]), axisLabel:{fontSize:10, rotate:15, interval:0} },
+    yAxis:{ type:'value', axisLabel:{formatter:v=>fmt(v)} },
+    series:[{
+      name:'实际销售', type:'bar', barMaxWidth:22,
+      data:keys.map(k => {
+        const r = RAW.monthly[k].find(x=>x.month===ym);
+        return r ? r.sales : 0;
+      }),
+      itemStyle:{ color: p => Object.values(CH_COLORS)[p.dataIndex] || '#4f46e5' }
+    }]
+  }, true);
+}
+
+function renderPieChart_ytd() {
+  const data = RAW.ytd.filter(d => d.name !== 'TTL' && d.actual > 0);
+  const chart = getChart('pieChart');
+  if (!chart) return;
+  chart.setOption({
+    tooltip:{ trigger:'item', formatter:'{b}: ¥{c} ({d}%)' },
+    legend:{ show:false },
+    series:[{ type:'pie', radius:['40%','70%'], center:['50%','50%'],
+      data:data.map(d=>({ name:d.name, value:d.actual })),
+      label:{ fontSize:10, formatter:'{b}\n{d}%' },
+      emphasis:{ itemStyle:{ shadowBlur:10, shadowOffsetX:0, shadowColor:'rgba(0,0,0,.2)' } }
+    }]
+  }, true);
+}
+
+function renderPieChart_monthly(year, month) {
+  const ym = `${year}-${month}`;
+  const keys = Object.keys(RAW.monthly);
+  const data = keys.map(k => {
+    const r = RAW.monthly[k].find(x=>x.month===ym);
+    return { name:CH_LABELS[k], value: r ? r.sales : 0 };
+  }).filter(d=>d.value>0);
+  const chart = getChart('pieChart');
+  if (!chart) return;
+  chart.setOption({
+    tooltip:{ trigger:'item', formatter:'{b}: ¥{c} ({d}%)' },
+    legend:{ show:false },
+    series:[{ type:'pie', radius:['40%','70%'], center:['50%','50%'],
+      data, label:{ fontSize:10, formatter:'{b}\n{d}%' }
+    }]
+  }, true);
+}
+
+function renderYtdTable() {
+  const rows = RAW.ytd;
+  const html = rows.map(d => {
+    const rate = d.target > 0 ? d.actual / d.target * 100 : 0;
+    const yoy = d.last_year > 0 ? (d.actual - d.last_year) / d.last_year * 100 : null;
+    const fillW = Math.min(100, rate).toFixed(0);
+    const fillC = rate >= 100 ? '#10b981' : rate >= 85 ? '#f59e0b' : '#ef4444';
+    const isTtl = d.name === 'TTL';
+    return `<tr style="${isTtl ? 'font-weight:700;background:#f8fafc;' : ''}">
+      <td>${d.name}</td>
+      <td>${fmtFull(d.budget)}</td>
+      <td>${fmtFull(d.target)}</td>
+      <td>${fmtFull(d.actual)}</td>
+      <td>
+        <span class="kpi-rate ${rateClass(rate)}" style="font-size:12px;">${rate.toFixed(1)}%</span>
+      </td>
+      <td>${d.last_year > 0 ? fmtFull(d.last_year) : '—'}</td>
+      <td>${yoy !== null ? `<span style="color:${yoy>=0?'#10b981':'#ef4444'}">${yoy>=0?'+':''}${yoy.toFixed(1)}%</span>` : '—'}</td>
+      <td><div class="progress-bar"><div class="progress-fill" style="width:${fillW}%;background:${fillC}"></div></div></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('ytdTableBody').innerHTML = html;
+}
+
+function renderTrendChart() {
+  const chKey = document.getElementById('db-channel-filter').value;
+  const yearFilter = document.getElementById('trend-year-filter').value;
+  const chart = getChart('trendChart');
+  if (!chart) return;
+
+  const keys = chKey === 'all' ? Object.keys(RAW.monthly) : [chKey];
+  // Collect all months
+  const allMonths = new Set();
+  keys.forEach(k => RAW.monthly[k].forEach(r => allMonths.add(r.month)));
+  let months = [...allMonths].sort();
+  if (yearFilter !== 'all') months = months.filter(m => m.startsWith(yearFilter));
+
+  const series = keys.map(k => ({
+    name: CH_LABELS[k],
+    type: 'line', smooth: true,
+    lineStyle:{ color: CH_COLORS[k] || '#4f46e5', width: 2 },
+    itemStyle:{ color: CH_COLORS[k] || '#4f46e5' },
+    data: months.map(m => { const r = RAW.monthly[k].find(x=>x.month===m); return r ? r.sales : 0; }),
+    symbol:'circle', symbolSize:4
+  }));
+
+  chart.setOption({
+    tooltip:{ trigger:'axis', formatter: p => p[0].axisValue+'<br>'+p.filter(i=>i.value>0).map(i=>`${i.marker}${i.seriesName}：¥${Math.round(i.value).toLocaleString()}`).join('<br>') },
+    legend:{ bottom:0, textStyle:{fontSize:11} },
+    grid:{ left:10, right:10, bottom:50, top:10, containLabel:true },
+    xAxis:{ type:'category', data:months, axisLabel:{fontSize:10, rotate:30, interval:'auto'} },
+    yAxis:{ type:'value', axisLabel:{formatter:v=>fmt(v)} },
+    series
+  }, true);
+}
+
+// ══════════════════════════════════════════
+//  TREND PAGE
+// ══════════════════════════════════════════
+function renderAllChannelCharts() {
+  const yearRange = document.getElementById('trend-year-range').value;
+  const chartType = document.getElementById('trend-chart-type').value;
+  const container = document.getElementById('allChannelCharts');
+  const keys = Object.keys(RAW.monthly);
+  container.innerHTML = keys.map(k => `
+    <div class="ch-chart-card">
+      <h4>${CH_LABELS[k]}</h4>
+      <div id="ch-chart-${k}" style="height:240px;"></div>
+    </div>`).join('');
+
+  keys.forEach(k => {
+    let data = RAW.monthly[k];
+    if (yearRange !== 'all') {
+      const years = yearRange.split('_');
+      data = data.filter(r => years.some(y => r.month.startsWith(y)));
+    }
+    const chart = echarts.init(document.getElementById('ch-chart-'+k));
+    _charts['ch-'+k] = chart;
+    chart.setOption({
+      tooltip:{ trigger:'axis', formatter: p => p[0].axisValue+': ¥'+Math.round(p[0].value).toLocaleString() },
+      grid:{ left:10, right:10, bottom:30, top:10, containLabel:true },
+      xAxis:{ type:'category', data:data.map(r=>r.month), axisLabel:{fontSize:9, rotate:30, interval:'auto'} },
+      yAxis:{ type:'value', axisLabel:{formatter:v=>fmt(v), fontSize:10} },
+      series:[{
+        type: chartType, smooth:true,
+        data:data.map(r=>r.sales),
+        itemStyle:{ color: CH_COLORS[k] || '#4f46e5' },
+        lineStyle:{ color: CH_COLORS[k] || '#4f46e5', width:2 },
+        areaStyle: chartType==='line' ? { color: { type:'linear', x:0,y:0,x2:0,y2:1,
+          colorStops:[{offset:0,color:(CH_COLORS[k]||'#4f46e5')+'66'},{offset:1,color:(CH_COLORS[k]||'#4f46e5')+'00'}] } } : {},
+        barMaxWidth:20
+      }]
+    });
+  });
+}
+
+// ══════════════════════════════════════════
+//  CHANNEL LIST PAGE
+// ══════════════════════════════════════════
+let chPage = 1;
+const chPerPage = 10;
+
+// Map channel key → ytd row name
+const CH_YTD_MAP = {
+  tmall: '天猫', douyin_luggage: '抖音ITO旗舰店（摩登新贵女）',
+  douyin_bag: '抖音ITO官方旗舰店（轻熟质享客）', douyin_biz: '抖音ito箱包旗舰店（云端商务家）',
+  jd: '京东自营', xhs: '小红书自营',
+  douyin_live_luggage: '抖音达播-行李箱', douyin_live_bag: '抖音达播-包袋', xhs_live: '小红书达播'
+};
+
+function renderChannelList() {
+  const year = document.getElementById('ch-year').value;
+  const startM = document.getElementById('ch-month-start').value;
+  const endM = document.getElementById('ch-month-end').value;
+  const search = document.getElementById('ch-search').value.toLowerCase();
+  const statusF = document.getElementById('ch-status-filter').value;
+
+  // 修正：确保 startM <= endM
+  const effectiveEnd = endM >= startM ? endM : startM;
+  document.getElementById('ch-date-label').textContent =
+    `统计区间：${year}年${parseInt(startM)}月 — ${year}年${parseInt(effectiveEnd)}月`;
+
+  const rows = Object.keys(RAW.monthly).map(k => {
+    const actual = getSalesInRange(k, year, startM, effectiveEnd);
+    const prevActual = getPrevYearSales(k, year, startM, effectiveEnd);
+    const ytdRow = RAW.ytd.find(d => d.name === CH_YTD_MAP[k]);
+    const target = ytdRow ? Math.round(ytdRow.target / 3 * (parseInt(effectiveEnd) - parseInt(startM) + 1)) : 0;
+    const rate = target > 0 ? actual / target * 100 : 0;
+    const yoy = prevActual > 0 ? (actual - prevActual) / prevActual * 100 : null;
+    return { key:k, name:CH_LABELS[k], actual, target, rate, prevActual, yoy };
+  });
+
+  const filtered = rows.filter(r => {
+    if (search && !r.name.toLowerCase().includes(search)) return false;
+    if (statusF === 'good' && r.rate < 100) return false;
+    if (statusF === 'mid' && (r.rate >= 100 || r.rate < 85)) return false;
+    if (statusF === 'low' && r.rate >= 85) return false;
+    return true;
+  });
+
+  const total = filtered.length;
+  const start = (chPage - 1) * chPerPage;
+  const paged = filtered.slice(start, start + chPerPage);
+
+  const html = paged.map((r, i) => {
+    const fillW = Math.min(100, r.rate).toFixed(0);
+    const fillC = r.rate >= 100 ? '#10b981' : r.rate >= 85 ? '#f59e0b' : '#ef4444';
+    return `<tr>
+      <td>${start+i+1}</td>
+      <td><strong>${r.name}</strong></td>
+      <td>${fmtFull(r.actual)}</td>
+      <td>${r.target > 0 ? fmtFull(r.target) : '—'}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="progress-bar" style="width:60px;"><div class="progress-fill" style="width:${fillW}%;background:${fillC}"></div></div>
+          <span style="font-size:12px;font-weight:600;color:${fillC}">${r.rate > 0 ? r.rate.toFixed(1)+'%' : '—'}</span>
+        </div>
+      </td>
+      <td>${r.prevActual > 0 ? fmtFull(r.prevActual) : '—'}</td>
+      <td>${r.yoy !== null ? `<span style="color:${r.yoy>=0?'#10b981':'#ef4444'}">${r.yoy>=0?'+':''}${r.yoy.toFixed(1)}%</span>` : '—'}</td>
+      <td><span class="status-badge ${r.actual > 0 ? statusClass(r.rate) : 's-low'}">${r.actual > 0 ? statusText(r.rate) : '暂无数据'}</span></td>
+      <td><button class="btn btn-outline btn-sm" onclick="editChannel('${r.key}')">编辑</button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('channelTableBody').innerHTML = html || '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px;">暂无匹配数据</td></tr>';
+
+  // Pagination
+  const totalPages = Math.ceil(total / chPerPage);
+  let pgHtml = `<span class="page-info">共 ${total} 条</span>`;
+  for (let p = 1; p <= totalPages; p++) {
+    pgHtml += `<button class="page-btn ${p===chPage?'active':''}" onclick="chPage=${p};renderChannelList()">${p}</button>`;
+  }
+  document.getElementById('channelPagination').innerHTML = pgHtml;
+}
+
+function editChannel(key) {
+  document.getElementById('f-channel').value = CH_LABELS[key];
+  showPage('entry');
+  showToast('已切换到编辑页，可录入 '+CH_LABELS[key]+' 的数据');
+}
+
+// ══════════════════════════════════════════
+//  KPI PAGE
+// ══════════════════════════════════════════
+function renderKpiPage() {
+  const sel = document.getElementById('kpi-month-sel').value;
+  const [y, m] = sel.split('-');
+  const monthLabel = `${y}年${parseInt(m)}月`;
+  document.getElementById('kpiPageTitle').textContent = monthLabel + ' 月度目标看板';
+
+  // 若是4月显示预算表；否则从monthly取实际数据
+  const useActual = sel !== '2026-04';
+
+  const rows = RAW.monthly_kpi;
+  let html = '';
+  rows.forEach(d => {
+    let actual = d.actual_est;
+    if (useActual) {
+      // 从monthly查找同期实际数据
+      const key = Object.entries(CH_LABELS).find(([k,v]) => d.name.includes(v) || v.includes(d.name.replace('旗舰店','')))?.[0];
+      if (key) {
+        const r = (RAW.monthly[key] || []).find(x => x.month === sel);
+        actual = r ? r.sales : 0;
+      }
+    }
+    const rate = d.target > 0 ? actual / d.target * 100 : 0;
+    const yoy = d.last_year > 0 ? (actual - d.last_year) / d.last_year * 100 : null;
+    const isTtl = d.name === 'TTL';
+    html += `<tr style="${isTtl?'font-weight:700;background:#f8fafc;':''}">
+      <td>${d.name}</td>
+      <td>${fmtFull(d.budget)}</td>
+      <td>${fmtFull(d.target)}</td>
+      <td>${actual > 0 ? fmtFull(actual) : '<span style="color:var(--muted)">待统计</span>'}</td>
+      <td>${actual > 0 ? `<span class="kpi-rate ${rateClass(rate)}">${rate.toFixed(1)}%</span>` : '—'}</td>
+      <td>${d.last_year > 0 ? fmtFull(d.last_year) : '—'}</td>
+      <td>${yoy !== null && actual > 0 ? `<span style="color:${yoy>=0?'#10b981':'#ef4444'}">${yoy>=0?'+':''}${yoy.toFixed(1)}%</span>` : '—'}</td>
+    </tr>`;
+  });
+  document.getElementById('kpiTableBody').innerHTML = html;
+
+  // Bar chart
+  const data = rows.filter(d => d.name !== 'TTL');
+  const chart = getChart('kpiBarChart');
+  if (chart) {
+    chart.setOption({
+      tooltip:{ trigger:'axis', formatter: p => p[0].name+'<br>'+p.map(i=>`${i.marker}${i.seriesName}：¥${Math.round(i.value).toLocaleString()}`).join('<br>') },
+      legend:{ bottom:0, textStyle:{fontSize:11} },
+      grid:{ left:10, right:10, bottom:50, top:10, containLabel:true },
+      xAxis:{ type:'category', data:data.map(d=>d.name), axisLabel:{fontSize:10, rotate:20, interval:0} },
+      yAxis:{ type:'value', axisLabel:{formatter:v=>fmt(v)} },
+      series:[
+        { name:'预算', type:'bar', data:data.map(d=>d.budget), itemStyle:{color:'#c7d2fe'}, barMaxWidth:16 },
+        { name:'目标', type:'bar', data:data.map(d=>d.target), itemStyle:{color:'#818cf8'}, barMaxWidth:16 },
+        { name:'去年同期', type:'bar', data:data.map(d=>d.last_year), itemStyle:{color:'#e2e8f0'}, barMaxWidth:16 }
+      ]
+    }, true);
+  }
+}
+
+// ══════════════════════════════════════════
+//  ENTRY PAGE
+// ══════════════════════════════════════════
+function queryHistory() {
+  const key = document.getElementById('q-channel').value;
+  const year = document.getElementById('q-year').value;
+  const keys = key === 'all' ? Object.keys(RAW.monthly) : [key];
+  let rows = [];
+  keys.forEach(k => {
+    RAW.monthly[k].forEach(r => {
+      if (year === 'all' || r.month.startsWith(year))
+        rows.push({ name:CH_LABELS[k], month:r.month, sales:r.sales });
+    });
+  });
+  rows.sort((a,b) => b.month.localeCompare(a.month));
+  document.getElementById('historyTableBody').innerHTML = rows.slice(0, 50).map(r =>
+    `<tr><td>${r.name}</td><td>${r.month}</td><td>${fmtFull(r.sales)}</td></tr>`
+  ).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--muted);">暂无数据</td></tr>';
+}
+
+function submitForm() {
+  const ch = document.getElementById('f-channel').value;
+  const yr = document.getElementById('f-year').value;
+  const mo = document.getElementById('f-month').value;
+  const actual = document.getElementById('f-actual').value;
+  if (!ch || !actual) { showToast('⚠️ 请填写渠道和实际销售额', 'warn'); return; }
+  showToast('✅ 数据已保存（演示模式，未写入文件）');
+  resetForm();
+}
+
+function resetForm() {
+  ['f-channel','f-year','f-month','f-actual','f-budget','f-target','f-note']
+    .forEach(id => { const el = document.getElementById(id); if(el) el.value = el.tagName==='SELECT' ? el.options[0].value : ''; });
+}
+
+// ══════════════════════════════════════════
+//  MODAL
+// ══════════════════════════════════════════
+function openModal(title) {
+  document.getElementById('modalTitle').textContent = title || '新增渠道数据';
+  document.getElementById('modalOverlay').classList.add('open');
+}
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+}
+function saveModal() {
+  closeModal();
+  showToast('✅ 已保存（演示模式）');
+}
+
+// ══════════════════════════════════════════
+//  TOAST
+// ══════════════════════════════════════════
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ══════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  refreshDashboard();
+  renderTrendChart();
+  // 设置月份筛选器默认：3月
+  document.getElementById('db-month').value = '03';
+});
+</script>
+</body>
+</html>
