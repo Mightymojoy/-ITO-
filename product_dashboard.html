@@ -277,6 +277,7 @@ function renderLuggage(){
   // 趋势图
   const trendData=getDailyTrend(LUG_DAILY,ch,startDate,endDate,metric);
   const pData=getDailyTrend(LUG_DAILY,ch,prev.start,prev.end,metric);
+  const pDataPadded=pDates(pData,trendData.length);
   document.getElementById('lugTrendLabel').textContent=startDate+' ~ '+endDate;
   const xLabels=dates.map((d,i)=>i%Math.max(1,Math.floor(dates.length/20))===0?d.slice(5):'');
 
@@ -287,7 +288,7 @@ function renderLuggage(){
       labels:dates,
       datasets:[
         {label:'当期',data:trendData,borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,0.1)',fill:true,tension:0.3,pointRadius:0,borderWidth:2},
-        {label:'上期',data:pData,borderColor:'#9ca3af',borderDash:[3,3],tension:0.3,pointRadius:0,borderWidth:1,data:pDates(startDate,endDate,pData,trendData.length)}
+        {label:'上期',data:pDataPadded,borderColor:'#9ca3af',borderDash:[3,3],tension:0.3,pointRadius:0,borderWidth:1}
       ]
     },
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{size:11}}}},scales:{y:{beginAtZero:true,ticks:{callback:v=>metric==='amt'?fmtD(v):v.toLocaleString()}}}}
@@ -337,7 +338,7 @@ function renderLuggage(){
   // 表格表头更新
   document.querySelector('#tab-luggage thead tr').innerHTML='<th>#</th><th>系列</th><th>'+(metric==='amt'?'销售额':'销量')+'</th><th>占比</th><th>渠道分布</th>';
 }
-function pDates(s,e,pData,len){while(pData.length<len)pData.unshift(0);return pData.slice(-len);}
+function pDates(pData,len){while(pData.length<len)pData.unshift(0);return pData.slice(-len);}
 
 // ===== 人群看板 =====
 let audTrendChart,audPieChart,audSeriesChart;
@@ -365,6 +366,7 @@ function renderAudience(){
   document.getElementById('audTrendLabel').textContent=startDate+' ~ '+endDate;
   const trendData=getDailyTrend(AUD_DAILY,ch,startDate,endDate,metric);
   const pData2=getDailyTrend(AUD_DAILY,ch,prev.start,prev.end,metric);
+  const pData2Padded=pDates(pData2,trendData.length);
   if(audTrendChart)audTrendChart.destroy();
   audTrendChart=new Chart(document.getElementById('audTrend'),{
     type:'line',
@@ -372,7 +374,7 @@ function renderAudience(){
       labels:dates,
       datasets:[
         {label:'当期',data:trendData,borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,0.1)',fill:true,tension:.3,pointRadius:0,borderWidth:2},
-        {label:'上期',data:pDates(startDate,endDate,pData2,trendData.length),borderColor:'#9ca3af',borderDash:[3,3],tension:.3,pointRadius:0,borderWidth:1}
+        {label:'上期',data:pData2Padded,borderColor:'#9ca3af',borderDash:[3,3],tension:.3,pointRadius:0,borderWidth:1}
       ]
     },
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{size:11}}}},scales:{y:{beginAtZero:true,ticks:{callback:v=>metric==='amt'?fmtD(v):v.toLocaleString()}}}}
