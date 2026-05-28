@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>ITO 电商数据看板</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+body{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f3f4f6;color:#1f2937;padding:20px}
+h1{font-size:24px;margin-bottom:8px;color:#111827}
+p{font-size:14px;color:#6b7280;margin-bottom:32px}
+.cards{display:flex;gap:20px;flex-wrap:wrap;justify-content:center}
+.card{background:#fff;border-radius:12px;padding:28px 32px;box-shadow:0 2px 8px rgba(0,0,0,.08);text-align:center;text-decoration:none;color:#111827;width:260px;transition:all .2s}
+.card:hover{box-shadow:0 4px 16px rgba(0,0,0,.12);transform:translateY(-3px)}
+.card .icon{font-size:40px;margin-bottom:12px}
+.card h2{font-size:18px;margin-bottom:6px}
+.card .desc{font-size:13px;color:#9ca3af}
+.footer{margin-top:40px;font-size:12px;color:#9ca3af}
+</style>
+</head>
+<body>
+<h1>ITO 电商数据看板</h1>
+<p>选择以下看板查看数据</p>
+<div class="cards">
+<a class="card" href="channel_dashboard.html">
+<div class="icon">📊</div>
+<h2>渠道业绩看板</h2>
+<div class="desc">多渠道目标 vs 达成 · 月度趋势<br>实际+预估 · 达播拆分</div>
+</a>
+<a class="card" href="product_dashboard.html">
+<div class="icon">🧳</div>
+<h2>产品分析看板</h2>
+<div class="desc">行李箱/包袋 · 系列/尺寸/颜色<br>人群分布 · 同环比分析</div>
+</a>
+</div>
+<div class="footer">ITO 电商运营数据平台 · 数据每日刷新</div>
+</body>
+</html>
