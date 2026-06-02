@@ -213,8 +213,8 @@ const GROUPS = {
   '兴趣电商汇总': ['抖音ITO旗舰店（摩登新贵女）','抖音ITO官方旗舰店（轻熟质享客）','抖音ito箱包旗舰店（云端商务家）','小红书自营','抖音达播-行李箱','抖音达播-包袋','小红书达播']
 };
 
-// 基准日期：2026-05-26 为"今天"，之前日期用实际，之后日期用目标
-const TODAY='2026-05-27';
+// 基准日期：2026-06-01 为"今天"，之前日期用实际，之后日期用目标
+const TODAY='2026-06-02';
 
 // ========== Helpers ==========
 function fmt(v){return Math.round(v).toLocaleString('zh-CN')}
@@ -364,6 +364,7 @@ function render(){
   CHANNEL_ORDER.forEach(ch=>{
     curr[ch]=sumRange([ch],start,end);
   });
+  console.log('DEBUG curr[天猫]:', curr['天猫'], 'actual:', curr['天猫']?.actual, 'actual_forecast:', curr['天猫']?.actual_forecast);
   // 汇总组
   Object.keys(GROUPS).forEach(gk=>{
     curr[gk]=sumRange(GROUPS[gk],start,end);
