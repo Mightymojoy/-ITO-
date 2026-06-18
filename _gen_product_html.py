@@ -965,7 +965,7 @@ function toggleSeriesCard(idx){
       const hasYoyData=trendYoy.some(function(x){return x!==null && x!==undefined;});
       // 如新系列无同期数据→隐藏去年同期线；如新系列当期无数据→裁剪至首个有销日期
       var firstIdx=trendNow.findIndex(function(x){return x>0;});
-      if(firstIdx>0){var sliStart=Math.max(0,firstIdx-1);trendNow=trendNow.slice(sliStart);trendYoy=trendYoy.slice(sliStart);dates=dates.slice(sliStart);}
+      if(firstIdx>0){dates=dates.slice(firstIdx);trendNow=trendNow.slice(firstIdx);trendYoy=trendYoy.slice(firstIdx);}
       const chData=CHANNELS.map(c=>sumDaily(ALL_DAILY,[c],startDate,endDate,name,metric,true));
       const chTotal=chData.reduce((a,b)=>a+b,0)||1;
 
