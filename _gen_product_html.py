@@ -961,6 +961,8 @@ function toggleSeriesCard(idx){
       const yoyDates=dates.map(d=>{const p=d.split('-');return (+p[0]-1)+'-'+p[1]+'-'+p[2];});
       const trendNow=dates.map(dt=>{let v=0;if(!ALL_DAILY[dt])return 0;(ch.length?ch:Object.keys(ALL_DAILY[dt])).forEach(c=>{if(ALL_DAILY[dt][c]?.[name])v+=ALL_DAILY[dt][c][name][metric]||0;});return Math.round(v);});
       const trendYoy=yoyDates.map(dt=>{let v=0;if(!ALL_DAILY[dt])return null;(ch.length?ch:Object.keys(ALL_DAILY[dt])).forEach(c=>{if(ALL_DAILY[dt][c]?.[name])v+=ALL_DAILY[dt][c][name][metric]||0;});return v?Math.round(v):null;});
+      // 硬性防护：若该系列在当期所有日期均为0（全新系列），不显示去年同期线
+      const hasAnyData=trendNow.some(function(x){return x>0;});
       const chData=CHANNELS.map(c=>sumDaily(ALL_DAILY,[c],startDate,endDate,name,metric,true));
       const chTotal=chData.reduce((a,b)=>a+b,0)||1;
 
@@ -968,7 +970,7 @@ function toggleSeriesCard(idx){
         const trendCtx=document.getElementById('series-trend-'+idx);
         if(trendCtx)new Chart(trendCtx,{type:'line',data:{labels:dates,datasets:[
           {label:'今年',data:trendNow,borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,0.1)',fill:true,tension:.3,pointRadius:0,pointHitRadius:20,borderWidth:2},
-          {label:'去年同期',data:showYoy?trendYoy:[],borderColor:'#9ca3af',backgroundColor:'transparent',fill:false,tension:.3,pointRadius:0,pointHitRadius:20,borderWidth:2,borderDash:[5,5]}
+          {label:'去年同期',data:showYoy&&hasAnyData?trendYoy:[],borderColor:'#9ca3af',backgroundColor:'transparent',fill:false,tension:.3,pointRadius:0,pointHitRadius:20,borderWidth:2,borderDash:[5,5]}
         ].filter(function(ds){return ds.data.length>0})},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{callback:function(v){return Math.round(metric==='amt'?v/10000:v)+''}}}}}});
 
         const pieCtx=document.getElementById('series-pie-'+idx);
