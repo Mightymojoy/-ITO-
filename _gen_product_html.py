@@ -1,5 +1,9 @@
+# -*- coding: utf-8 -*-
 import json
 import os
+import sys
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 BASE = r'E:\电商渠道业绩看板'
 
@@ -251,7 +255,7 @@ tr.summary td{font-weight:700;background:#eff6ff;border-top:2px solid #2563eb}
   <div class="collapse-wrap" id="lugDetailCollapse">
     <div class="collapse-header" onclick="toggleCollapse('lugDetailBody')">
       <h3>📋 系列销售明细 <small id="lugDetailCount"></small></h3>
-      <span class="arrow" id="lugDetailArrow">▼</span>
+      <span class="arrow" id="lugDetailBodyArrow">▼</span>
     </div>
     <div class="collapse-body" id="lugDetailBody">
       <div class="table-wrap"><table><thead><tr id="lugDetailHead"><th>系列</th><th>销售额</th><th>销量</th><th>占比</th></tr></thead><tbody id="lugDetailBodyInner"></tbody></table></div>
@@ -326,7 +330,7 @@ tr.summary td{font-weight:700;background:#eff6ff;border-top:2px solid #2563eb}
     <div class="chart-box"><h3>尺寸占比</h3><canvas id="sizePieChart"></canvas></div>
   </div>
   <div class="chart-row">
-    <div class="chart-box full"><h3>尺寸销售趋势 <small id="sizeTrendLabel"></small></h3><canvas id="sizeTrendChart"></canvas></div>
+    <div class="chart-box full"><h3>尺寸销售趋势 <small id="sizeTrendLabel"></small> <button onclick="resetSizes()" style="font-size:10px;padding:1px 8px;background:#c9a962;color:#fff;border:none;border-radius:8px;cursor:pointer;vertical-align:middle;margin-left:4px;">重置</button></h3><canvas id="sizeTrendChart"></canvas></div>
   </div>
 </div>
 
@@ -551,8 +555,10 @@ function initFilters(){
     CHANNELS.map(ch=>`<button data-ch="${ch}" onclick="toggleCh('${ch}')">${ch}</button>`).join('');
 }
 function setMetric(m){
+  console.log('setMetric called: '+m);
   metric=m;
   document.querySelectorAll('.metric-toggle button').forEach(b=>b.classList.toggle('active',b.dataset.m===m));
+  renderCurrentTab();
 }
 function toggleYoy(){
   showYoy=document.getElementById('chkYoy').checked;
@@ -576,18 +582,21 @@ function toggleAllChannels(){
   renderCurrentTab();
 }
 function toggleCh(ch){
+  console.log('toggleCh called: '+ch);
   selChannels=new Set([ch]);
   document.querySelectorAll('.channel-tags button').forEach(b=>b.classList.toggle('active',b.dataset.ch===ch));
   renderCurrentTab();
 }
 function renderCurrentTab(){
+  console.log('renderCurrentTab called, active tab='+(document.querySelector('.tab-content.active')?.id||'none'));
   const active=document.querySelector('.tab-content.active');
   if(active&&active.id==='tab-luggage')renderLuggage();
   if(active&&active.id==='tab-bag')renderBag();
   if(active&&active.id==='tab-audience')renderAudience();
   if(active&&active.id==='tab-size')renderSize();
   if(active&&active.id==='tab-color')renderColor();
-  if(active&&active.id==='tab-sku')renderSKU();
+  if(active&&active.id==='tab-series-detail')renderSeriesTab();
+  if(active&&active.id==='tab-sku')renderSKUData();
 }
 function getVisChannels(){return selChannels.size?[...selChannels]:CHANNELS}
 function applyFilters(){
@@ -933,7 +942,7 @@ function renderSeriesTab(){
     container.innerHTML+=
       '<div class="collapse-wrap" id="series-card-'+idx+'">'+
       '<div class="collapse-header" onclick="toggleSeriesCard('+idx+')">'+
-      '<h3>#'+(idx+1)+' '+escapeHtml(name)+' <small>'+fmtD(val.amt)+' | 占比'+pctStr+' | 环比'+prevStr.replace(/<[^>]+>/g,'')+' | 同比'+yoyStr.replace(/<[^>]+>/g,'')+'</small></h3>'+
+      '<h3>#'+(idx+1)+' '+escapeHtml(name)+' <small>'+(metric==='amt'?fmtD(val.amt):Math.round(val.qty).toLocaleString())+' | 占比'+pctStr+' | 环比'+prevStr.replace(/<[^>]+>/g,'')+' | 同比'+yoyStr.replace(/<[^>]+>/g,'')+'</small></h3>'+
       '<span class="arrow" id="series-arrow-'+idx+'">▼</span></div>'+
       '<div class="collapse-body" id="series-body-'+idx+'"><div class="table-wrap" style="padding:12px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px" id="series-grid-'+idx+'">'+
       '<div><canvas id="series-trend-'+idx+'" style="max-height:260px"></canvas></div>'+
@@ -941,7 +950,7 @@ function renderSeriesTab(){
       '<div id="series-pie-yoy-wrap-'+idx+'" style="display:none"><canvas id="series-pie-yoy-'+idx+'" style="max-height:260px"></canvas></div>'+
       '</div></div></div></div>';
   });
-  seriesCards=sorted;
+  seriesCards=filteredSorted;
 }
 
 function escapeHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
@@ -957,10 +966,10 @@ function toggleSeriesCard(idx){
       const [name,val]=seriesCards[idx]||[];
       if(!name)return;
       const ch=getVisChannels();
-      const dates=getDatesInRange(startDate,endDate);
+      let dates=getDatesInRange(startDate,endDate);
       const yoyDates=dates.map(d=>{const p=d.split('-');return (+p[0]-1)+'-'+p[1]+'-'+p[2];});
-      const trendNow=dates.map(dt=>{let v=0;if(!ALL_DAILY[dt])return 0;(ch.length?ch:Object.keys(ALL_DAILY[dt])).forEach(c=>{if(ALL_DAILY[dt][c]?.[name])v+=ALL_DAILY[dt][c][name][metric]||0;});return Math.round(v);});
-      const trendYoy=yoyDates.map(dt=>{let v=0;if(!ALL_DAILY[dt])return null;(ch.length?ch:Object.keys(ALL_DAILY[dt])).forEach(c=>{if(ALL_DAILY[dt][c]?.[name])v+=ALL_DAILY[dt][c][name][metric]||0;});return v?Math.round(v):null;});
+      let trendNow=dates.map(dt=>{let v=0;if(!ALL_DAILY[dt])return 0;(ch.length?ch:Object.keys(ALL_DAILY[dt])).forEach(c=>{if(ALL_DAILY[dt][c]?.[name])v+=ALL_DAILY[dt][c][name][metric]||0;});return Math.round(v);});
+      let trendYoy=yoyDates.map(dt=>{let v=0;if(!ALL_DAILY[dt])return null;(ch.length?ch:Object.keys(ALL_DAILY[dt])).forEach(c=>{if(ALL_DAILY[dt][c]?.[name])v+=ALL_DAILY[dt][c][name][metric]||0;});return v?Math.round(v):null;});
       // 硬性防护：全新系列（无同期数据）不显示去年同期线
       const hasYoyData=trendYoy.some(function(x){return x!==null && x!==undefined;});
       // 如新系列无同期数据→隐藏去年同期线；如新系列当期无数据→裁剪至首个有销日期
@@ -991,7 +1000,7 @@ function toggleSeriesCard(idx){
           var yoyP=getYoYPeriod(startDate,endDate);
           if(yoyP.start){
             var yoyD=getDatesInRange(yoyP.start,yoyP.end);
-            var yoyCh=CHANNELS.map(function(ccc){var a=0,q=0;yoyD.forEach(function(dt){if(!seriesDaily[dt]||!seriesDaily[dt][ccc]||!seriesDaily[dt][ccc][skey])return;a+=seriesDaily[dt][ccc][skey].amt||0;q+=seriesDaily[dt][ccc][skey].qty||0;});return metric==='amt'?a:q;});
+            var yoyCh=CHANNELS.map(function(ccc){var a=0,q=0;yoyD.forEach(function(dt){if(!ALL_DAILY[dt]||!ALL_DAILY[dt][ccc]||!ALL_DAILY[dt][ccc][name])return;a+=ALL_DAILY[dt][ccc][name].amt||0;q+=ALL_DAILY[dt][ccc][name].qty||0;});return metric==='amt'?a:q;});
             var yoyTot=yoyCh.reduce((a,b)=>a+b,0)||1;
             var yoyPieCtx=document.getElementById('series-pie-yoy-'+idx);
             if(yoyPieCtx)new Chart(yoyPieCtx,{type:'pie',data:{labels:CHANNELS.filter((_,i)=>yoyCh[i]>0),datasets:[{data:yoyCh.filter(v=>v>0),backgroundColor:pieColors.slice(0,CHANNELS.filter((_,i)=>yoyCh[i]>0).length)}]},options:{responsive:true,plugins:{legend:{position:'bottom',labels:{font:{size:9},generateLabels:function(cc2){var ds2=cc2.data.datasets[0];return ds2.data.map((v,i)=>({text:(cc2.data.labels[i]||'')+': '+Math.round(v).toLocaleString()+' ('+Math.round(v/yoyTot*100)+'%)',fillStyle:ds2.backgroundColor[i],strokeStyle:'#fff',lineWidth:0,hidden:false,index:i}));}}}}}});
@@ -1122,6 +1131,7 @@ function getSizeColorData(isColor){
 
 // ===== 尺寸看板 =====
 let sizeRankChart,sizeTrendChart,sizePieChart;
+let hiddenSizes=[];
 function renderSize(){
   const ch=getVisChannels();
   const dates=getDatesInRange(startDate,endDate);
@@ -1139,6 +1149,7 @@ function renderSize(){
     const mpct=pv?Math.round((v-pv)/pv*100):0;
     return {name:sz,val:Math.round(v),yoy:gpct,mom:mpct};
   });
+  if(hiddenSizes.length)rankYoy=rankYoy.filter(s=>!hiddenSizes.includes(s.name));
   // KPI（含同环比）
   const totalYoy2=sumDaily(daily,ch,yoy.start,yoy.end,'',metric,false);
   const totalPrev2=sumDaily(daily,ch,prev.start,prev.end,'',metric,false);
@@ -1179,9 +1190,10 @@ function renderSize(){
   sizeTrendChart=new Chart(document.getElementById('sizeTrendChart'),{
     type:'line',
     data:{labels:dates,datasets:sizeDatasets},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'top',labels:{usePointStyle:true,boxWidth:8}},tooltip:{enabled:true,mode:'index',intersect:false,callbacks:{title:function(items){return items[0].label},label:function(ctx){var p=Math.round(ctx.parsed.y);return ctx.dataset.label+': '+(metric==='amt'?'¥'+p.toLocaleString()+'元':p.toLocaleString()+'件')}}}},hover:{mode:'index',intersect:false},scales:{y:{beginAtZero:true,ticks:{callback:v=>Math.round(metric==='amt'?v/10000:v)+''}}}}
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'top',labels:{usePointStyle:true,boxWidth:8},onClick:function(e,legItem){const nm=legItem.text.replace(' (今年)','').replace(' (去年)','');const idx=hiddenSizes.indexOf(nm);if(idx>=0)hiddenSizes.splice(idx,1);else hiddenSizes.push(nm);renderSize()}},tooltip:{enabled:true,mode:'index',intersect:false,callbacks:{title:function(items){return items[0].label},label:function(ctx){var p=Math.round(ctx.parsed.y);return ctx.dataset.label+': '+(metric==='amt'?'¥'+p.toLocaleString()+'元':p.toLocaleString()+'件')}}}},hover:{mode:'index',intersect:false},scales:{y:{beginAtZero:true,ticks:{callback:v=>Math.round(metric==='amt'?v/10000:v)+''}}}}
   });
 }
+function resetSizes(){hiddenSizes=[];renderSize();}
 
 // ===== 颜色看板 =====
 let colorRankChart,colorTrendChart,colorPieChart;
@@ -1245,14 +1257,29 @@ function renderColor(){
 }
 
 // ===== SKU分析 =====
-function renderSKU(){
-  var cat=document.getElementById('skuCat')?document.getElementById('skuCat').value:'all';
+var _skuFilterBuilt=false;
+function renderSKU(keepFilters){
+  // keepFilters=true时（渠道切换、指标切换）不重建筛选控件
   var ch=getVisChannels();
   var dates=getDatesInRange(startDate,endDate);
   var dayCount=dates.length;
   if(!dayCount){document.getElementById('skuContent').innerHTML='<h3>请选择日期范围</h3>';return;}
+  console.log('renderSKU called, keepFilters='+keepFilters+', metric='+metric+', channels='+ch.join(','));
 
-  // 按品类过滤系列
+  var cat='all';
+  var prevSelected='';
+  var filterEl=document.getElementById('skuFilterBar');
+  if(filterEl&&keepFilters){
+    // 保持现有筛选控件
+    cat=document.getElementById('skuCat')?document.getElementById('skuCat').value:'all';
+    prevSelected=document.getElementById('skuSeries')?document.getElementById('skuSeries').value:'';
+  }else{
+    // 首次渲染或品类变化，重建筛选控件
+    cat=document.getElementById('skuCat')?document.getElementById('skuCat').value:'all';
+    prevSelected=document.getElementById('skuSeries')?document.getElementById('skuSeries').value:'';
+  }
+  console.log('renderSKU cat='+cat+' prevSelected='+prevSelected);
+
   var seriesList=(SKU_META.series||[]).filter(function(s){
     if(cat==='all')return true;
     if(cat==='luggage')return SKU_BY_SERIES[s]&&SKU_BY_SERIES[s].is_luggage;
@@ -1260,18 +1287,22 @@ function renderSKU(){
     return true;
   });
 
-  var html='<div class="filters" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;background:#fff;padding:12px 16px;border-radius:10px">';
-  html+='<label style="font-size:12px;color:#6b7280;font-weight:500">品类</label>';
-  html+='<select id="skuCat" onchange="renderSKU()" style="border:1px solid #d1d5db;border-radius:6px;padding:5px 10px;font-size:13px;background:#fff"><option value="all"'+(cat==='all'?' selected':'')+'>全部</option><option value="luggage"'+(cat==='luggage'?' selected':'')+'>行李箱</option><option value="bag"'+(cat==='bag'?' selected':'')+'>包袋</option></select>';
-  html+='<label style="font-size:12px;color:#6b7280">系列</label>';
-  html+='<select id="skuSeries" onchange="renderSKU()" style="border:1px solid #d1d5db;border-radius:6px;padding:5px 10px;font-size:13px;background:#fff"><option value="">请选择系列</option>';
-  seriesList.sort().forEach(function(s){
-    if(SKU_BY_SERIES[s])html+='<option value="'+s+'">'+s+'</option>';
-  });
-  html+='</select>';
-  html+='</div>';
+  var html='';
+  if(!filterEl||!keepFilters){
+    // 只有首次加载或品类变化时才重建筛选栏
+    html='<div class="filters" id="skuFilterBar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;background:#fff;padding:12px 16px;border-radius:10px">';
+    html+='<label style="font-size:12px;color:#6b7280;font-weight:500">品类</label>';
+    html+='<select id="skuCat" onchange="renderSKU()" style="border:1px solid #d1d5db;border-radius:6px;padding:5px 10px;font-size:13px;background:#fff"><option value="all"'+(cat==='all'?' selected':'')+'>全部</option><option value="luggage"'+(cat==='luggage'?' selected':'')+'>行李箱</option><option value="bag"'+(cat==='bag'?' selected':'')+'>包袋</option></select>';
+    html+='<label style="font-size:12px;color:#6b7280">系列</label>';
+    html+='<select id="skuSeries" onchange="renderSKU()" style="border:1px solid #d1d5db;border-radius:6px;padding:5px 10px;font-size:13px;background:#fff"><option value="">请选择系列</option>';
+    seriesList.sort().forEach(function(s){
+      if(SKU_BY_SERIES[s])html+='<option value="'+s+'"'+(s===prevSelected?' selected':'')+'>'+s+'</option>';
+    });
+    html+='</select>';
+    html+='</div>';
+  }
 
-  var selSeries=document.getElementById('skuSeries')?document.getElementById('skuSeries').value:'';
+  var selSeries=prevSelected;
   if(!selSeries){html+='<div class="placeholder" style="height:200px">选择一个系列以查看SKU分析</div>';document.getElementById('skuContent').innerHTML=html;return;}
 
   var seriesData=SKU_BY_SERIES[selSeries];
@@ -1296,8 +1327,19 @@ function renderSKU(){
     });
   });
 
-  // KPI
+  // 如果切换渠道后该系列无数据，显示提示
   var skuCount=Object.keys(seriesDaily).length;
+  if(skuCount===0){
+    if(!filterEl||!keepFilters){
+      html+='<div class="placeholder" style="height:200px">该渠道无此品类数据</div>';
+      document.getElementById('skuContent').innerHTML=html;
+    }else{
+      document.getElementById('skuDataArea').innerHTML='<div class="placeholder" style="height:200px">该渠道无此品类数据</div>';
+    }
+    return;
+  }
+
+  // KPI
   var topSKU=Object.entries(seriesDaily).sort(function(a,b){return b[1][metric]-a[1][metric]})[0];
   html+='<div class="kpi-grid"><div class="kpi-card"><div class="label">SKU数</div><div class="value">'+skuCount+'</div></div>';
   html+='<div class="kpi-card"><div class="label">'+selSeries+' '+(metric==='amt'?'销售额':'销量')+'</div><div class="value">'+(metric==='amt'?fmtD(seriesTotal.amt):Math.round(seriesTotal.qty).toLocaleString())+'</div></div>';
@@ -1421,7 +1463,28 @@ function renderSKU(){
   // SKU详情区（占位，点击矩阵格子后填充）
   html+='<div id="skuDetailArea"></div>';
 
-  document.getElementById('skuContent').innerHTML=html;
+  if(filterEl&&keepFilters){
+    // 渠道/指标切换：只刷新数据区
+    console.log('SKU: keepFilters mode, updating skuDataArea');
+    var dataArea=document.getElementById('skuDataArea');
+    if(!dataArea){
+      // 首次keepFilters但无skuDataArea，回退全量刷新
+      console.log('SKU: skuDataArea not found, full refresh');
+      document.getElementById('skuContent').innerHTML=html;
+    }else{
+      dataArea.innerHTML=html;
+    }
+  }else{
+    // 首次加载或品类变化：全量刷新
+    console.log('SKU: full refresh mode');
+    document.getElementById('skuContent').innerHTML=html+'<div id="skuDataArea"></div>';
+  }
+}
+
+function renderSKUData(){
+  console.log('renderSKUData called');
+  // 只刷新SKU数据区域（不重建筛选控件），供渠道/指标切换时调用
+  renderSKU(true);
 }
 
 // SKU详情展示
@@ -1434,15 +1497,34 @@ function showSKUDetail(skuKey){
     return Math.round(v);
   });
 
+  // 同期对比值计算（用于KPI卡片展示）
+  var yoyD=dates.map(function(d){var p=d.split('-');return (+p[0]-1)+'-'+p[1]+'-'+p[2];});
+  var yoyTotal=0;
+  if(showYoy){
+    yoyD.forEach(function(dt){
+      var v=0;if(!SKU_CH_DAILY[dt])return;visCh.forEach(function(c){if(SKU_CH_DAILY[dt][c]&&SKU_CH_DAILY[dt][c][skuKey])v+=SKU_CH_DAILY[dt][c][skuKey][metric]||0;});
+      yoyTotal+=Math.round(v);
+    });
+  }
+  var hasYoyNum=yoyTotal>0;
+  var yoyPct=hasYoyNum?Math.round((total[metric]-yoyTotal)/yoyTotal*100):null;
+
   var parts=skuKey.split('|');
   var series=parts[0]||'',color=parts[1]||'',size=parts[2]||'';
 
   var html='<div class="chart-box full"><h3>SKU详情: '+color+' / '+size+'</h3>';
-  html+='<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:12px">';
-  html+='<div class="kpi-card"><div class="label">'+(metric==='amt'?'销售额':'销量')+'</div><div class="value" style="font-size:18px">'+(metric==='amt'?fmtD(total.amt):Math.round(total.qty).toLocaleString())+'</div></div>';
+  html+='<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:8px">';
+  html+='<div class="kpi-card"><div class="label">'+(metric==='amt'?'销售额':'销量')+'</div><div class="value" style="font-size:18px">'+(metric==='amt'?fmtD(total.amt):Math.round(total.qty).toLocaleString())+'</div><div class="sub" style="font-size:10px;color:#2563eb">筛选期内</div></div>';
   html+='<div class="kpi-card"><div class="label">均价</div><div class="value" style="font-size:18px">¥'+(total.qty?Math.round(total.amt/total.qty).toLocaleString():'—')+'</div></div>';
   html+='<div class="kpi-card"><div class="label">趋势方向</div><div class="value" style="font-size:18px">'+(trendNow.length>1?(trendNow[trendNow.length-1]>=trendNow[0]?'<span class="up">▲ 上升</span>':'<span class="down">▼ 下降</span>'):'—')+'</div><div class="sub" style="font-size:10px;color:#9ca3af">首尾对比</div></div>';
-  html+='</div><div class="chart-box full"><canvas id="skuDetailTrend"></canvas><div style="margin-top:6px;font-size:11px;color:#9ca3af;text-align:center">▲ 上升 / ▼ 下降：对比时间段首尾日数值，整体呈增长为上升、反之为下降。中间波动不影响趋势判定。</div></div></div>';
+  html+='</div>';
+  if(hasYoyNum){
+    html+='<div style="display:flex;gap:12px;margin-bottom:10px">';
+    html+='<div style="flex:1;padding:8px 10px;background:#f0f5ff;border-radius:6px;text-align:center;border:1px solid #dbeafe"><div style="font-size:10px;color:#6b7280;margin-bottom:2px">去年同期</div><div style="font-size:16px;font-weight:600;color:#2563eb">'+(metric==='amt'?fmtD(yoyTotal):Math.round(yoyTotal).toLocaleString())+'</div><div style="font-size:9px;color:#9ca3af">'+dates[0]+' ~ '+dates[dates.length-1]+'</div></div>';
+    html+='<div style="flex:1;padding:8px 10px;background:'+(yoyPct>0?'#f0fdf4':yoyPct<0?'#fef2f2':'#f9fafb')+';border-radius:6px;text-align:center;border:1px solid '+(yoyPct>0?'#bbf7d0':yoyPct<0?'#fecaca':'#e5e7eb')+'"><div style="font-size:10px;color:#6b7280;margin-bottom:2px">同比变化</div><div style="font-size:20px;font-weight:700;color:'+(yoyPct>0?'#059669':yoyPct<0?'#dc2626':'#6b7280')+'">'+(yoyPct>0?'+':'')+yoyPct+'%</div><div style="font-size:11px;color:'+(yoyPct>0?'#059669':yoyPct<0?'#dc2626':'#6b7280')+'">'+(metric==='amt'?(yoyPct>0?'+':'')+fmtD(total.amt-yoyTotal):(Math.round(total.qty-yoyTotal)>0?'+':'')+Math.round(total.qty-yoyTotal).toLocaleString())+'</div></div>';
+    html+='</div>';
+  }
+  html+='<div class="chart-box full"><canvas id="skuDetailTrend"></canvas><div style="margin-top:6px;font-size:11px;color:#9ca3af;text-align:center">▲ 上升 / ▼ 下降：对比时间段首尾日数值，整体呈增长为上升、反之为下降。中间波动不影响趋势判定。</div></div></div>';
   document.getElementById('skuDetailArea').innerHTML=html;
 
   // 趋势图
@@ -1462,6 +1544,70 @@ renderLuggage();
 </div>
 </body>
 </html>'''
+
+# ===== 注入对比功能代码（f58c8a0 移植） =====
+COMPARE_CSS = '''/* 对比功能 */
+.compare-btn{display:inline-flex;align-items:center;gap:4px;padding:3px 12px;border:1px dashed #c9a962;border-radius:6px;background:transparent;color:#c9a962;font-size:11px;font-weight:500;cursor:pointer;transition:all .2s;vertical-align:middle;margin:0 4px;font-family:inherit}
+.compare-btn:hover{background:rgba(201,169,98,.08);border-style:solid}
+.compare-btn.active{background:#c9a962;color:#fff;border-style:solid}
+.compare-period{display:none;align-items:center;gap:4px;vertical-align:middle}
+.compare-period.visible{display:inline-flex}
+.compare-period input[type=date]{border:1px solid #d1d5db;border-radius:6px;padding:3px 8px;font-size:12px;width:115px}
+.compare-row{display:none;border-top:2px dashed #c9a962;margin-top:6px;padding-top:10px;margin-bottom:4px;position:relative}
+.compare-row.show{display:block}
+.compare-row::before{content:'\u5bf9\u6bd4\u5468\u671f';position:absolute;top:-8px;left:0;font-size:10px;color:#c9a962;background:#f3f4f6;padding:0 10px;font-weight:600;z-index:1}
+.compare-row .kpi-card{background:rgba(201,169,98,.04);border:1px solid rgba(201,169,98,.2)}
+'''
+
+RENDER_COMPARE_ROW_FN = '''
+function renderCompareRow(containerId,data,ch,start,end,metric){
+  var container=document.getElementById(containerId);
+  if(!container)return;
+  var compareEl=container.parentElement.querySelector('.compare-row');
+  if(!compareEl){
+    compareEl=document.createElement('div');
+    compareEl.className='compare-row';
+    container.parentElement.insertBefore(compareEl,container.nextSibling);
+  }
+  if(!compareOn||!cStart||!cEnd){compareEl.classList.remove('show');return}
+  var cTotal=sumDaily(data,ch,cStart,cEnd,'',metric,false);
+  var mTotal=sumDaily(data,ch,start,end,'',metric,false);
+  var diffV=mTotal-cTotal;
+  var diffP=cTotal>0?(diffV/cTotal*100).toFixed(1):'-';
+  var isUp=diffV>=0;
+  compareEl.innerHTML='<div class="kpi-card"><div class="label">\u5bf9\u6bd4\u671f '+(metric==='amt'?'\u9500\u552e\u989d':'\u9500\u91cf')+'</div><div class="value">'+(metric==='amt'?fmtD(cTotal):cTotal.toLocaleString())+'</div><div class="sub" style="color:#9ca3af;font-size:10px">'+cStart+' ~ '+cEnd+'</div></div><div class="kpi-card"><div class="label">\u53d8\u5316\u989d</div><div class="value '+(isUp?'up':'down')+'">'+(isUp?'+':'')+(metric==='amt'?fmtD(diffV):diffV.toLocaleString())+'</div><div class="sub" style="color:#9ca3af;font-size:10px">\u53d8\u5316\u7387: '+(diffP==='-'?'-':(isUp?'+':'')+diffP+'%')+'</div></div>';
+  compareEl.classList.add('show');
+}
+'''
+
+COMPARE_EVENTS = '''
+document.getElementById('compareToggle').addEventListener('click',function(){
+  compareOn=!compareOn;this.classList.toggle('active');
+  document.getElementById('comparePeriod').classList.toggle('visible');
+  renderCurrentTab();
+});
+document.getElementById('compareStart').addEventListener('change',function(){cStart=this.value;if(compareOn)renderCurrentTab();});
+document.getElementById('compareEnd').addEventListener('change',function(){cEnd=this.value;if(compareOn)renderCurrentTab();});
+'''
+
+html = html.replace('.val-qty{color:#2563eb}', '.val-qty{color:#2563eb}\n' + COMPARE_CSS)
+html = html.replace('let showYoy=false;', 'let showYoy=false;\nlet compareOn=false,cStart="2026-06-01",cEnd="2026-06-30";')
+compare_btn = '<button class="compare-btn" id="compareToggle"><i data-lucide="git-compare" style="width:14px;height:14px;display:none"></i>\u5bf9\u6bd4</button><div class="compare-period" id="comparePeriod"><span style="font-size:11px;color:#6b7280">\u5bf9\u6bd4</span><input type="date" id="compareStart" value="2026-06-01"><span style="font-size:11px;color:#6b7280">\u81f3</span><input type="date" id="compareEnd" value="2026-06-30"></div>'
+html = html.replace('<input type="checkbox" id="chkYoy"', compare_btn + '\n    <input type="checkbox" id="chkYoy"')
+html = html.replace('function toggleCh(', RENDER_COMPARE_ROW_FN + '\nfunction toggleCh(')
+html = html.replace("document.getElementById('lugKpi').innerHTML=", "  renderCompareRow('lugKpi',LUG_DAILY,ch,startDate,endDate,metric);\n  document.getElementById('lugKpi').innerHTML=")
+html = html.replace("document.getElementById('bagKpi').innerHTML=", "  renderCompareRow('bagKpi',BAG_DAILY,ch,startDate,endDate,metric);\n  document.getElementById('bagKpi').innerHTML=")
+# seriesKpi 包袋占比注入
+html = html.replace(
+    "// KPI（使用筛选后的数据）",
+    "var _lugV=sumDaily(LUG_DAILY,ch,startDate,endDate,'',metric,false);var _bagV=sumDaily(BAG_DAILY,ch,startDate,endDate,'',metric,false);var _bagPct=(_lugV+_bagV)>0?(_bagV/(_lugV+_bagV)*100):0;\n  // KPI（使用筛选后的数据）"
+)
+html = html.replace("document.getElementById('seriesKpi').innerHTML=", "  var _seriesCat=document.getElementById('seriesCat')?.value||'all';\n  var _seriesDaily=_seriesCat==='luggage'?LUG_DAILY:_seriesCat==='bag'?BAG_DAILY:ALL_DAILY;\n  renderCompareRow('seriesKpi',_seriesDaily,ch,startDate,endDate,metric);\n  document.getElementById('seriesKpi').innerHTML=")
+html = html.replace("fmtD(totalAmt):Math.round(totalQty).toLocaleString()}</div></div>", "fmtD(totalAmt):Math.round(totalQty).toLocaleString()}</div></div>`+\n    `<div class=\"kpi-card\"><div class=\"label\">包袋占比 <small>${metric==='amt'?'销售额':'销量'}</small></div><div class=\"value\" style=\"color:#8b5cf6\">${_bagPct.toFixed(1)}%</div><div class=\"sub\" style=\"color:#9ca3af;font-size:10px\">包袋/(行李箱+包袋)</div></div>")
+html = html.replace("document.getElementById('audKpi').innerHTML=", "  renderCompareRow('audKpi',ad.daily,ch,startDate,endDate,metric);\n  document.getElementById('audKpi').innerHTML=")
+html = html.replace("document.getElementById('sizeKpi').innerHTML=", "  renderCompareRow('sizeKpi',daily,ch,startDate,endDate,metric);\n  document.getElementById('sizeKpi').innerHTML=")
+html = html.replace("document.getElementById('colorKpi').innerHTML=", "  renderCompareRow('colorKpi',daily,ch,startDate,endDate,metric);\n  document.getElementById('colorKpi').innerHTML=")
+html = html.replace("renderLuggage();", "renderLuggage();\n" + COMPARE_EVENTS)
 
 # 写文件（使用LF换行，避免Windows CRLF导致Node.js解析JS报错）
 with open(os.path.join(BASE, 'product_dashboard.html'), 'w', encoding='utf-8', newline='\n') as f:
