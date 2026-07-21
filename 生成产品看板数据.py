@@ -12,6 +12,7 @@ KEY_STORES = [
     '直销_伊稻_电商_天猫ITO旗舰店', '直销_乐绘_电商_京东ITO京东自营旗舰店',
     '直销_伊稻_电商_抖音ITO旗舰店', '直销_乐绘_电商_抖音ITO官方旗舰店',
     '直销_伊远_电商_抖音ITO行李箱旗舰店', '直销_伊稻_电商_小红书ITO旗舰店',
+    '直销_伊稻_电商_视频号ITO旗舰店',
 ]
 CHANNEL_NAMES = {
     '直销_伊稻_电商_天猫ITO旗舰店': '天猫',
@@ -20,12 +21,22 @@ CHANNEL_NAMES = {
     '直销_乐绘_电商_抖音ITO官方旗舰店': '抖音ITO官方旗舰店（轻熟质享客）',
     '直销_伊远_电商_抖音ITO行李箱旗舰店': '抖音ito箱包旗舰店（云端商务家）',
     '直销_伊稻_电商_小红书ITO旗舰店': '小红书自营',
+    '直销_伊稻_电商_视频号ITO旗舰店': '视频号',
 }
 
 # ===== 1. 系列匹配表 =====
 print('读取系列产品匹配表...')
 match_raw = pd.read_excel(TARGET_FILE, sheet_name='系列产品匹配')
-match = match_raw[['货品名称', '系列.1', '颜色.1', '尺寸.1', '品类.1', '箱型', '简称-商品', '人群']].copy()
+# 兼容源表结构变化：旧表存在重复列名(pandas 自动加 .1 后缀)，新表已去重无后缀。
+# 优先取 .1 后缀列，不存在则回退到无后缀列，避免源 Excel 表头一改动脚本就崩。
+_cols = list(match_raw.columns)
+def _pick_col(base):
+    return base + '.1' if (base + '.1') in _cols else base
+_sel = ['货品名称', _pick_col('系列'), _pick_col('颜色'), _pick_col('尺寸'), _pick_col('品类'), '箱型', '简称-商品', '人群']
+_missing = [c for c in _sel if c not in _cols]
+if _missing:
+    raise KeyError(f'系列产品匹配表缺少必要列: {_missing}；当前列: {_cols}')
+match = match_raw[_sel].copy()
 match.columns = ['货品名称', '系列', '颜色', '尺寸', '品类', '箱型', '简称', '人群']
 
 product_attrs = {}
@@ -86,7 +97,7 @@ total_audience = 0
 for fname in files:
     fp = os.path.join(DATA_SRC, fname)
     df = pd.read_excel(fp)
-    for _, row in df.iterrows():
+    for row in df.to_dict('records'):
         total_read += 1
         date_str = str(row.get('日期', '')).strip()[:10]
         ch_raw = str(row.get('渠道', str(row.get('店铺', '')))).strip()
@@ -117,7 +128,8 @@ for fname in files:
             if fb is None:
                 for key, val in product_attrs.items():
                     if key and name and (key in name or name in key):
-                        fb = dict(val)
+                        product_attrs[name] = val.copy()  # 缓存到精确匹配字典，后续 O(1)
+                        fb = val.copy()
                         break
             attrs = fb
         if attrs is None:
