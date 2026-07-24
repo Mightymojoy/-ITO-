@@ -34,9 +34,9 @@ if errorlevel 1 (
     echo ? gen_channel_data.py Ö´ÐÐÊ§°Ü
     exit /b 1
 )
-%PYTHON% -X utf8 _rebuild_html.py
+%PYTHON% -X utf8 _gen_premium_demo.py
 if errorlevel 1 (
-    echo ? _rebuild_html.py Ö´ÐÐÊ§°Ü
+    echo ? _gen_premium_demo.py Ö´ÐÐÊ§°Ü
     exit /b 1
 )
 
