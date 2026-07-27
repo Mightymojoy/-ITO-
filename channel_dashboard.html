@@ -461,12 +461,14 @@ function renderRank(){
     const na=c.rate==null;
     const width=na?0:Math.min(c.rate,120);
     const color=na?'':(c.rate>=100?'#2e7d52':(c.rate>=80?'#a8873f':'#c0492f'));
-    const amt=na?(wan(c.actual)+'万 / 无目标'):(wan(c.af)+'万 / '+wan(c.op)+'万');
+    // 排行口径与「日度实际 GMV」卡片保持一致：主数字展示 actual；达成率仍按 actual_forecast/target
+    const amt=na?(wan(c.actual)+'万 / 无目标'):(wan(c.actual)+'万 / '+wan(c.op)+'万');
     return `<div class="rrow">
       <div><div class="nm">${i+1}. ${c.name}</div><div class="tag">${c.group}</div></div>
       <div class="track"><div class="fill ${na?'na':''}" data-w="${width}"></div></div>
       <div class="num"><div class="rt tnum" style="color:${color||'#9a9183'}">${na?'—':c.rate+'%'}</div>
         <div class="amt tnum">${amt}</div>
+        ${!na?`<div class="amt2 tnum" style="color:#9a9183;font-size:11px">实际+预估 ${wan(c.af)}万</div>`:''}
         ${c.yoy!=null?`<div class="yoy ${c.yoy>=0?'up':'down'}">同比 ${c.yoy>=0?'▲':'▼'} ${Math.abs(c.yoy).toFixed(1)}%</div>`:''}
       </div>
     </div>`;
