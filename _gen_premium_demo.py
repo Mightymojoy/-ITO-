@@ -14,7 +14,8 @@ channels = D["channels"]
 groups = {g["name"]: g["children"] for g in D["groups"]}
 raw = D["data"]
 
-TODAY = "2026-07-24"
+# TODAY 动态取生成时间（避免硬编码过期：今天及之前用 actual，今天及未来用 combined_forecast）
+TODAY = (D["meta"].get("generated_at") or "2026-07-27")[:10]
 
 # ---------- 全量明细嵌入：{ch: {date: [actual, budget, op, fc, actual_forecast]}} ----------
 # 口径与现有 channel_dashboard.html 保持一致：
