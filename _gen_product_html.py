@@ -1617,6 +1617,33 @@ function renderCompareRow(containerId,data,ch,start,end,metric){
 }
 
 // ===== 退货分析（2026-07-30 新增，v3 修复双重累加） =====
+// 退货对比行（与 renderCompareRow 解耦，复用 compare-row 样式）；支持渠道数组
+function renderReturnCompareRow(containerId,retD,chs,start,end,metric){
+  var container=document.getElementById(containerId);
+  if(!container)return;
+  var compareEl=container.parentElement.querySelector('.compare-row');
+  if(!compareEl){
+    compareEl=document.createElement('div');
+    compareEl.className='compare-row';
+    container.parentElement.insertBefore(compareEl,container.nextSibling);
+  }
+  if(!compareOn||!cStart||!cEnd){compareEl.classList.remove('show');return}
+  var key=metric==='amt'?'return_amt':'return_qty';
+  var cTotal=0,mTotal=0;
+  getDatesInRange(cStart,cEnd).forEach(function(d){
+    if(!retD[d])return;
+    chs.forEach(function(ch){var t=retD[d][ch]&&retD[d][ch]['$total'];if(t)cTotal+=t[key]||0;});
+  });
+  getDatesInRange(start,end).forEach(function(d){
+    if(!retD[d])return;
+    chs.forEach(function(ch){var t=retD[d][ch]&&retD[d][ch]['$total'];if(t)mTotal+=t[key]||0;});
+  });
+  var diffV=mTotal-cTotal;
+  var diffP=cTotal>0?(diffV/cTotal*100).toFixed(1):'-';
+  var isUp=diffV>=0;  // 退货增加是负向
+  compareEl.innerHTML='<div class="kpi-card"><div class="label">对比期 退货'+(metric==='amt'?'金额':'数量')+'</div><div class="value">'+(metric==='amt'?fmtD(cTotal):cTotal.toLocaleString())+'</div><div class="sub" style="color:#9ca3af;font-size:10px">'+cStart+' ~ '+cEnd+'</div></div><div class="kpi-card"><div class="label">变化额</div><div class="value '+(isUp?'down':'up')+'" style="color:'+(isUp?'#dc2626':'#059669')+'">'+(isUp?'+':'')+(metric==='amt'?fmtD(diffV):diffV.toLocaleString())+'</div><div class="sub" style="color:#9ca3af;font-size:10px">变化率: '+(diffP==='-'?'-':(isUp?'+':'')+diffP+'%')+'</div></div>';
+  compareEl.classList.add('show');
+}
 function renderReturn(){
   var cat=document.getElementById('returnCat').value;
   var daily=cat==='luggage'?LUG_DAILY:cat==='bag'?BAG_DAILY:ALL_DAILY;
@@ -1654,6 +1681,7 @@ function renderReturn(){
     });
   });
   var rate=totalSales>0?(totalRet/totalSales*100):0;
+  renderReturnCompareRow('returnKpi',retD,chs,startDate,endDate,m);
   document.getElementById('returnKpi').innerHTML=
     '<div class="kpi-card"><div class="label">退货金额</div><div class="value">'+fmtD(totalRet)+'</div></div>'+
     '<div class="kpi-card"><div class="label">退货数量</div><div class="value">'+totalRetQty.toLocaleString()+'笔</div></div>'+
