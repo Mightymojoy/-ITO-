@@ -115,15 +115,15 @@ for fname in files:
         qty = int(qty_raw) if qty_raw and not pd.isna(qty_raw) else 0
         amt_raw = row.get('实际销售额', 0)
         amt = int(amt_raw) if amt_raw and not pd.isna(amt_raw) else 0
-        # === 退货字段提取（2026-07-30 新增，不影响已有流程） ===
+        # === 退货字段提取（2026-07-30 新增，float 保留源数据精度） ===
         ret_qty_raw = row.get('退货总量', 0)
         ret_qty = int(ret_qty_raw) if ret_qty_raw and not pd.isna(ret_qty_raw) else 0
         ret_amt_raw = row.get('退货总金额', 0)
         try:
-            ret_amt = max(0, round(float(ret_amt_raw))) if ret_amt_raw and not pd.isna(ret_amt_raw) else 0
+            ret_amt = float(ret_amt_raw) if ret_amt_raw and not pd.isna(ret_amt_raw) else 0.0
         except (ValueError, TypeError):
-            ret_amt = 0
-        if qty == 0 and amt == 0:
+            ret_amt = 0.0
+        if qty == 0 and amt == 0 and ret_qty == 0 and ret_amt == 0:
             continue
         if not date_str or not name:
             continue
