@@ -119,7 +119,10 @@ for fname in files:
         ret_qty_raw = row.get('退货总量', 0)
         ret_qty = int(ret_qty_raw) if ret_qty_raw and not pd.isna(ret_qty_raw) else 0
         ret_amt_raw = row.get('退货总金额', 0)
-        ret_amt = int(ret_amt_raw) if ret_amt_raw and not pd.isna(ret_amt_raw) else 0
+        try:
+            ret_amt = max(0, round(float(ret_amt_raw))) if ret_amt_raw and not pd.isna(ret_amt_raw) else 0
+        except (ValueError, TypeError):
+            ret_amt = 0
         if qty == 0 and amt == 0:
             continue
         if not date_str or not name:

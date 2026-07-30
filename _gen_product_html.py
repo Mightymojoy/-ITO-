@@ -1616,13 +1616,13 @@ function renderCompareRow(containerId,data,ch,start,end,metric){
   compareEl.classList.add('show');
 }
 
-// ===== 退货分析（2026-07-30 新增，v2 联动 metric） =====
+// ===== 退货分析（2026-07-30 新增，v3 修复双重累加） =====
 function renderReturn(){
   var cat=document.getElementById('returnCat').value;
   var daily=cat==='luggage'?LUG_DAILY:cat==='bag'?BAG_DAILY:ALL_DAILY;
   var retD=cat==='luggage'?RET_LUG_DAILY:cat==='bag'?RET_BAG_DAILY:RET_ALL_DAILY;
   var chs=getVisChannels();
-  var m=metric||'amt';  // 联动销售额/销量切换
+  var m=metric||'amt';
   var totalRet=0,totalRetQty=0,totalSales=0,seriesMap={},chMap={};
   var dates=getDatesInRange(startDate,endDate);
   dates.forEach(function(d){
@@ -1631,6 +1631,7 @@ function renderReturn(){
       var chData=retD[d][ch];
       if(!chData)return;
       Object.keys(chData).forEach(function(sk){
+        if(sk==='$total')return;  // ��过$total避免双重累加
         var v=chData[sk];
         if(!v)return;
         totalRet+=v.return_amt||0;
@@ -1639,12 +1640,11 @@ function renderReturn(){
           var s=daily[d][ch][sk];
           if(s) totalSales+=s.amt||0;
         }
-        if(sk!=='$total'){
-          seriesMap[sk]=seriesMap[sk]||{amt:0,qty:0};
-          seriesMap[sk].amt+=v.return_amt||0;
-          seriesMap[sk].qty+=v.return_qty||0;
-        }
+        seriesMap[sk]=seriesMap[sk]||{amt:0,qty:0};
+        seriesMap[sk].amt+=v.return_amt||0;
+        seriesMap[sk].qty+=v.return_qty||0;
       });
+      // 渠道维度用 $total 汇总
       var chTot=chData['$total'];
       if(chTot){
         chMap[ch]=chMap[ch]||{amt:0,qty:0};
