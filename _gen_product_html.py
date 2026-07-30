@@ -1616,12 +1616,13 @@ function renderCompareRow(containerId,data,ch,start,end,metric){
   compareEl.classList.add('show');
 }
 
-// ===== 退货分析（2026-07-30 新增） =====
+// ===== 退货分析（2026-07-30 新增，v2 联动 metric） =====
 function renderReturn(){
   var cat=document.getElementById('returnCat').value;
   var daily=cat==='luggage'?LUG_DAILY:cat==='bag'?BAG_DAILY:ALL_DAILY;
   var retD=cat==='luggage'?RET_LUG_DAILY:cat==='bag'?RET_BAG_DAILY:RET_ALL_DAILY;
-  var chs=getVisChannels();  // 联动渠道筛选
+  var chs=getVisChannels();
+  var m=metric||'amt';  // 联动销售额/销量切换
   var totalRet=0,totalRetQty=0,totalSales=0,seriesMap={},chMap={};
   var dates=getDatesInRange(startDate,endDate);
   dates.forEach(function(d){
@@ -1657,47 +1658,61 @@ function renderReturn(){
     '<div class="kpi-card"><div class="label">退货金额</div><div class="value">'+fmtD(totalRet)+'</div></div>'+
     '<div class="kpi-card"><div class="label">退货数量</div><div class="value">'+totalRetQty.toLocaleString()+'笔</div></div>'+
     '<div class="kpi-card"><div class="label">退货率</div><div class="value" style="color:'+(rate>10?'#dc2626':'#059669')+'">'+rate.toFixed(1)+'%</div><div class="sub">退货/销售</div></div>'+
-    '<div class="kpi-card"><div class="label">退货占比<<总销售</div><div class="value" style="color:#8b5cf6">'+(totalSales>0?(totalRet/totalSales*100).toFixed(1):'-')+'%</div></div>';
-  // 趋势图（按筛选日期范围聚合）
-  var labels=[],retData=[];
+    '<div class="kpi-card"><div class="label">退货占比<<总销售</div><div class="value" style="color:#8b5cf6">'+(totalSales>0?(totalRet/totalSales*100).toFixed(1):'-')+'%</div></div>'+
+    '<div class="kpi-card" style="background:rgba(37,99,235,.04);border-color:rgba(37,99,235,.15)"><div class="label">当前维度</div><div class="value" style="color:#2563eb;font-size:16px">'+(m==='amt'?'按金额':'按数量')+'</div>';
+  // 趋势图（联动 metric）
+  var labels=[],retData=[],trendLabel=(m==='amt'?'退货金额':'退货数量');
   dates.forEach(function(d){
     var v=0;
     if(retD[d]) chs.forEach(function(ch){
-      var t=retD[d][ch]&&retD[d][ch]['$total']; if(t) v+=t.return_amt||0;
+      var t=retD[d][ch]&&retD[d][ch]['$total']; if(t) v+=(m==='amt'?t.return_amt:t.return_qty)||0;
     });
     labels.push(d.slice(5));
     retData.push(v);
   });
   if(window.retTrendChart)window.retTrendChart.destroy();
   window.retTrendChart=new Chart(document.getElementById('returnTrendChart'),{
-    type:'bar',data:{labels:labels,datasets:[{label:'退货金额',data:retData,backgroundColor:'rgba(220,38,38,.65)',borderColor:'#dc2626',borderWidth:1,borderRadius:3}]},
+    type:'bar',data:{labels:labels,datasets:[{label:trendLabel,data:retData,backgroundColor:'rgba(220,38,38,.65)',borderColor:'#dc2626',borderWidth:1,borderRadius:3}]},
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false}},
-      scales:{y:{beginAtZero:true,ticks:{callback:function(v){return v>=10000?Math.round(v/10000)+'万':v}}}}}
+      scales:{y:{beginAtZero:true,ticks:{callback:function(v){return m==='amt'?(v>=10000?Math.round(v/10000)+'万':v):v}}}}}
   });
-  // 系列排行（Top15）
-  var sorted=Object.keys(seriesMap).sort(function(a,b){return seriesMap[b].amt-seriesMap[a].amt}).slice(0,15);
-  var rLabels=[],rData=[],rColors=[];
+  // 系列排行（Top15，联动 metric）
+  var sorted=Object.keys(seriesMap).sort(function(a,b){return (m==='amt'?seriesMap[b].amt:seriesMap[b].qty)-(m==='amt'?seriesMap[a].amt:seriesMap[a].qty)}).slice(0,15);
+  var rLabels=[],rData=[];
   sorted.forEach(function(sk,i){
     rLabels.push(sk);
-    rData.push(seriesMap[sk].amt);
-    rColors.push(i===0?'#dc2626':i<3?'#ea580c':'#f97316');
+    rData.push(m==='amt'?seriesMap[sk].amt:seriesMap[sk].qty);
   });
   if(window.retRankChart)window.retRankChart.destroy();
   window.retRankChart=new Chart(document.getElementById('returnRankChart'),{
-    type:'bar',data:{labels:rLabels,datasets:[{label:'退货金额',data:rData,backgroundColor:rColors,borderRadius:3}]},
+    type:'bar',data:{labels:rLabels,datasets:[{label:trendLabel,data:rData,backgroundColor:rData.map(function(v,i){return i===0?'#dc2626':i<3?'#ea580c':'#f97316'}),borderRadius:3}]},
     options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false}},
-      scales:{x:{ticks:{callback:function(v){return v>=10000?Math.round(v/10000)+'万':v}}}}}
+      scales:{x:{ticks:{callback:function(v){return m==='amt'?(v>=10000?Math.round(v/10000)+'万':v):v}}}}}
   });
-  // 渠道占比（仅展示已选渠道）
-  var chSorted=chs.filter(function(c){return chMap[c]}).sort(function(a,b){return chMap[b].amt-chMap[a].amt});
+  // 渠道占比（联动 metric，显示百分比）
+  var chSorted=chs.filter(function(c){return chMap[c]}).sort(function(a,b){return (m==='amt'?chMap[b].amt:chMap[b].qty)-(m==='amt'?chMap[a].amt:chMap[a].qty)});
+  var chTotal=chSorted.reduce(function(s,c){return s+(m==='amt'?chMap[c].amt:chMap[c].qty)},0);
   var pieColors=['#dc2626','#ea580c','#f97316','#fbbf24','#a3e635','#34d399','#06b6d4','#6366f1','#a855f7'];
   if(window.retPieChart)window.retPieChart.destroy();
   window.retPieChart=new Chart(document.getElementById('returnPieChart'),{
     type:'doughnut',
-    data:{labels:chSorted,datasets:[{data:chSorted.map(function(c){return chMap[c].amt}),backgroundColor:pieColors.slice(0,chSorted.length),borderWidth:0}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}}}}
+    data:{labels:chSorted,datasets:[{data:chSorted.map(function(c){return m==='amt'?chMap[c].amt:chMap[c].qty}),backgroundColor:pieColors.slice(0,chSorted.length),borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{position:'right',labels:{boxWidth:12,font:{size:11},generateLabels:function(chart){
+          var data=chart.data;return data.labels.map(function(l,i){
+            var val=data.datasets[0].data[i],pct=chTotal>0?(val/chTotal*100).toFixed(1):0;
+            return {text:l+': '+pct+'%',fillStyle:data.datasets[0].backgroundColor[i],strokeStyle:'transparent',pointStyle:'circle',hidden:false,index:i};
+          });
+        }}},
+        tooltip:{callbacks:{label:function(ctx){
+          var val=ctx.parsed||0,pct=chTotal>0?(val/chTotal*100).toFixed(1):0;
+          return (m==='amt'?fmtD(val):val.toLocaleString())+' ('+pct+'%)';
+        }}}
+      }
+    }
   });
 }
 '''
