@@ -1688,7 +1688,7 @@ function renderReturn(){
     '<div class="kpi-card"><div class="label">退货率</div><div class="value" style="color:'+(rate>10?'#dc2626':'#059669')+'">'+rate.toFixed(1)+'%</div><div class="sub">退货/销售</div></div>'+
     '<div class="kpi-card"><div class="label">退货占比<<总销售</div><div class="value" style="color:#8b5cf6">'+(totalSales>0?(totalRet/totalSales*100).toFixed(1):'-')+'%</div></div>'+
     '<div class="kpi-card" style="background:rgba(37,99,235,.04);border-color:rgba(37,99,235,.15)"><div class="label">当前维度</div><div class="value" style="color:#2563eb;font-size:16px">'+(m==='amt'?'按金额':'按数量')+'</div>';
-  // 趋势图（联动 metric）
+  // 趋势图（当期+去年同期联动 showYoy）
   var labels=[],retData=[],trendLabel=(m==='amt'?'退货金额':'退货数量');
   dates.forEach(function(d){
     var v=0;
@@ -1698,11 +1698,17 @@ function renderReturn(){
     labels.push(d.slice(5));
     retData.push(v);
   });
+  var ds=[{label:trendLabel,data:retData,backgroundColor:'rgba(220,38,38,.65)',borderColor:'#dc2626',borderWidth:1,borderRadius:3}];
+  if(showYoy){
+    var yoyDates=dates.map(function(d){var p=d.split('-');var yd=new Date(+p[0]-1,+p[1]-1,+p[2]);return yd.getFullYear()+'-'+String(yd.getMonth()+1).padStart(2,'0')+'-'+String(yd.getDate()).padStart(2,'0');});
+    var yoyData=yoyDates.map(function(d){var v=0;if(retD[d])chs.forEach(function(ch){var t=retD[d][ch]&&retD[d][ch]['$total'];if(t)v+=(m==='amt'?t.return_amt:t.return_qty)||0;});return v||null;});
+    ds.push({label:trendLabel+' (去年)',data:yoyData,type:'line',borderColor:'#9ca3af',backgroundColor:'transparent',fill:false,tension:0.3,pointRadius:2,pointHitRadius:20,borderWidth:2,borderDash:[5,5]});
+  }
   if(window.retTrendChart)window.retTrendChart.destroy();
   window.retTrendChart=new Chart(document.getElementById('returnTrendChart'),{
-    type:'bar',data:{labels:labels,datasets:[{label:trendLabel,data:retData,backgroundColor:'rgba(220,38,38,.65)',borderColor:'#dc2626',borderWidth:1,borderRadius:3}]},
+    type:'bar',data:{labels:labels,datasets:ds},
     options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false}},
+      plugins:{legend:{display:showYoy}},
       scales:{y:{beginAtZero:true,ticks:{callback:function(v){return m==='amt'?(v>=10000?Math.round(v/10000)+'万':v):v}}}}}
   });
   // 系列排行（Top15，联动 metric）
