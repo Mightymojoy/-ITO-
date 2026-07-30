@@ -630,6 +630,7 @@ function renderCurrentTab(){
   if(active&&active.id==='tab-audience')renderAudience();
   if(active&&active.id==='tab-size')renderSize();
   if(active&&active.id==='tab-color')renderColor();
+  if(active&&active.id==='tab-return')renderReturn();
   if(active&&active.id==='tab-series-detail')renderSeriesTab();
   if(active&&active.id==='tab-sku')renderSKUData();
 }
@@ -643,6 +644,7 @@ function applyFilters(){
     if(el.id==='tab-audience')renderAudience();
     if(el.id==='tab-size')renderSize();
     if(el.id==='tab-color')renderColor();
+    if(el.id==='tab-return')renderReturn();
     if(el.id==='tab-series-detail')renderSeriesTab();
     if(el.id==='tab-sku')renderSKU();
   });
@@ -1619,19 +1621,19 @@ function renderReturn(){
   var cat=document.getElementById('returnCat').value;
   var daily=cat==='luggage'?LUG_DAILY:cat==='bag'?BAG_DAILY:ALL_DAILY;
   var retD=cat==='luggage'?RET_LUG_DAILY:cat==='bag'?RET_BAG_DAILY:RET_ALL_DAILY;
-  var chs=CHANNELS;
-  var totalRet=0,totalSales=0,seriesMap={},chMap={};
+  var chs=getVisChannels();  // 联动渠道筛选
+  var totalRet=0,totalRetQty=0,totalSales=0,seriesMap={},chMap={};
   var dates=getDatesInRange(startDate,endDate);
   dates.forEach(function(d){
     if(!retD[d])return;
-    Object.keys(retD[d]).forEach(function(ch){
+    chs.forEach(function(ch){
       var chData=retD[d][ch];
       if(!chData)return;
       Object.keys(chData).forEach(function(sk){
         var v=chData[sk];
         if(!v)return;
         totalRet+=v.return_amt||0;
-        // 取同期销售额用于计算退货率
+        totalRetQty+=v.return_qty||0;
         if(daily[d]&&daily[d][ch]){
           var s=daily[d][ch][sk];
           if(s) totalSales+=s.amt||0;
@@ -1642,7 +1644,6 @@ function renderReturn(){
           seriesMap[sk].qty+=v.return_qty||0;
         }
       });
-      // 渠道维度汇总
       var chTot=chData['$total'];
       if(chTot){
         chMap[ch]=chMap[ch]||{amt:0,qty:0};
@@ -1652,18 +1653,17 @@ function renderReturn(){
     });
   });
   var rate=totalSales>0?(totalRet/totalSales*100):0;
-  // KPI
   document.getElementById('returnKpi').innerHTML=
     '<div class="kpi-card"><div class="label">退货金额</div><div class="value">'+fmtD(totalRet)+'</div></div>'+
-    '<div class="kpi-card"><div class="label">退货数量</div><div class="value">'+Math.round(totalRet/10000).toLocaleString()+'笔</div></div>'+
+    '<div class="kpi-card"><div class="label">退货数量</div><div class="value">'+totalRetQty.toLocaleString()+'笔</div></div>'+
     '<div class="kpi-card"><div class="label">退货率</div><div class="value" style="color:'+(rate>10?'#dc2626':'#059669')+'">'+rate.toFixed(1)+'%</div><div class="sub">退货/销售</div></div>'+
     '<div class="kpi-card"><div class="label">退货占比<<总销售</div><div class="value" style="color:#8b5cf6">'+(totalSales>0?(totalRet/totalSales*100).toFixed(1):'-')+'%</div></div>';
-  // 趋势图
+  // 趋势图（按筛选日期范围聚合）
   var labels=[],retData=[];
   dates.forEach(function(d){
     var v=0;
-    if(retD[d]) Object.keys(retD[d]).forEach(function(ch){
-      var t=retD[d][ch]['$total']; if(t) v+=t.return_amt||0;
+    if(retD[d]) chs.forEach(function(ch){
+      var t=retD[d][ch]&&retD[d][ch]['$total']; if(t) v+=t.return_amt||0;
     });
     labels.push(d.slice(5));
     retData.push(v);
@@ -1690,8 +1690,8 @@ function renderReturn(){
       plugins:{legend:{display:false}},
       scales:{x:{ticks:{callback:function(v){return v>=10000?Math.round(v/10000)+'万':v}}}}}
   });
-  // 渠道占比
-  var chSorted=Object.keys(chMap).sort(function(a,b){return chMap[b].amt-chMap[a].amt});
+  // 渠道占比（仅展示已选渠道）
+  var chSorted=chs.filter(function(c){return chMap[c]}).sort(function(a,b){return chMap[b].amt-chMap[a].amt});
   var pieColors=['#dc2626','#ea580c','#f97316','#fbbf24','#a3e635','#34d399','#06b6d4','#6366f1','#a855f7'];
   if(window.retPieChart)window.retPieChart.destroy();
   window.retPieChart=new Chart(document.getElementById('returnPieChart'),{
