@@ -90,6 +90,12 @@ sku_data = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: {'qty': 0
 sku_by_date = defaultdict(lambda: defaultdict(lambda: {'qty': 0, 'amt': 0}))
 sku_meta = {}
 
+# ===== 退货数据累加器（2026-07-30 新增，纯加法不碰已有流程） =====
+R = lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: {'return_qty': 0, 'return_amt': 0})))
+return_data = R()
+return_lug_data = R()
+return_bag_data = R()
+
 total_read = 0
 total_matched = 0
 total_audience = 0
@@ -109,6 +115,11 @@ for fname in files:
         qty = int(qty_raw) if qty_raw and not pd.isna(qty_raw) else 0
         amt_raw = row.get('实际销售额', 0)
         amt = int(amt_raw) if amt_raw and not pd.isna(amt_raw) else 0
+        # === 退货字段提取（2026-07-30 新增，不影响已有流程） ===
+        ret_qty_raw = row.get('退货总量', 0)
+        ret_qty = int(ret_qty_raw) if ret_qty_raw and not pd.isna(ret_qty_raw) else 0
+        ret_amt_raw = row.get('退货总金额', 0)
+        ret_amt = int(ret_amt_raw) if ret_amt_raw and not pd.isna(ret_amt_raw) else 0
         if qty == 0 and amt == 0:
             continue
         if not date_str or not name:
@@ -231,6 +242,22 @@ for fname in files:
             if sku_key not in sku_meta:
                 cat_name = '行李箱' if is_luggage else ('包袋' if is_bag else '其他')
                 sku_meta[sku_key] = {'series': display, 'color': sku_color, 'size': sku_size, 'category': cat_name}
+
+        # === 退货累加（2026-07-30 新增，纯加法） ===
+        return_data[date_str][ch]['$total']['return_qty'] += ret_qty
+        return_data[date_str][ch]['$total']['return_amt'] += ret_amt
+        return_data[date_str][ch][display]['return_qty'] += ret_qty
+        return_data[date_str][ch][display]['return_amt'] += ret_amt
+        if is_luggage:
+            return_lug_data[date_str][ch]['$total']['return_qty'] += ret_qty
+            return_lug_data[date_str][ch]['$total']['return_amt'] += ret_amt
+            return_lug_data[date_str][ch][display]['return_qty'] += ret_qty
+            return_lug_data[date_str][ch][display]['return_amt'] += ret_amt
+        if is_bag:
+            return_bag_data[date_str][ch]['$total']['return_qty'] += ret_qty
+            return_bag_data[date_str][ch]['$total']['return_amt'] += ret_amt
+            return_bag_data[date_str][ch][display]['return_qty'] += ret_qty
+            return_bag_data[date_str][ch][display]['return_amt'] += ret_amt
 
 print(f'总行数: {total_read}, 已匹配: {total_matched}, 匹配人群: {total_audience}')
 
@@ -357,6 +384,19 @@ sku_daily_out = {'meta': sku_meta_out, 'daily': {d: dict_to_native(sku_data[d]) 
 with open(os.path.join(out_dir, 'sku_daily.json'), 'w', encoding='utf-8') as f:
     json.dump(sku_daily_out, f, ensure_ascii=False)
 print(f'SKU JSON: {os.path.getsize(os.path.join(out_dir,"sku_daily.json"))/1024:.0f} KB')
+
+# ===== 退货JSON输出（2026-07-30 新增） =====
+def write_return_json(data, name, out_dir):
+    dates, meta = make_meta(data)
+    j = {'meta': meta, 'daily': {d: dict_to_native(data[d]) for d in dates}}
+    with open(os.path.join(out_dir, name), 'w', encoding='utf-8') as f:
+        json.dump(j, f, ensure_ascii=False)
+    sz = os.path.getsize(os.path.join(out_dir, name))
+    print(f'{name}: {sz/1024:.0f} KB')
+
+write_return_json(return_data, 'return_daily.json', out_dir)
+write_return_json(return_lug_data, 'luggage_return_daily.json', out_dir)
+write_return_json(return_bag_data, 'bag_return_daily.json', out_dir)
 
 # 更新时间戳
 os.makedirs(os.path.join(BASE, '_cached_data'), exist_ok=True)

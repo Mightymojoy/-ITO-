@@ -36,6 +36,13 @@ with open(os.path.join(BASE, 'bag_color_daily.json'), 'r', encoding='utf-8') as 
     bag_color_data = json.load(f)
 with open(os.path.join(BASE, 'bag_size_daily.json'), 'r', encoding='utf-8') as f:
     bag_size_data = json.load(f)
+# ===== 退货数据（2026-07-30 新增） =====
+with open(os.path.join(BASE, 'return_daily.json'), 'r', encoding='utf-8') as f:
+    ret_all_data = json.load(f)
+with open(os.path.join(BASE, 'luggage_return_daily.json'), 'r', encoding='utf-8') as f:
+    ret_lug_data = json.load(f)
+with open(os.path.join(BASE, 'bag_return_daily.json'), 'r', encoding='utf-8') as f:
+    ret_bag_data = json.load(f)
 
 # ===== SKU数据：从sku_daily.json压缩为紧凑格式 =====
 print('  处理SKU数据...')
@@ -138,6 +145,10 @@ lug_color_json_str = json.dumps(lug_color_data['daily'], ensure_ascii=False)
 lug_size_json_str = json.dumps(lug_size_data['daily'], ensure_ascii=False)
 bag_color_json_str = json.dumps(bag_color_data['daily'], ensure_ascii=False)
 bag_size_json_str = json.dumps(bag_size_data['daily'], ensure_ascii=False)
+# === 退货JSON（2026-07-30 新增） ===
+ret_all_json_str = json.dumps(ret_all_data['daily'], ensure_ascii=False)
+ret_lug_json_str = json.dumps(ret_lug_data['daily'], ensure_ascii=False)
+ret_bag_json_str = json.dumps(ret_bag_data['daily'], ensure_ascii=False)
 
 LUG_META = json.dumps(luggage['meta'], ensure_ascii=False)
 BAG_META = json.dumps(bag['meta'], ensure_ascii=False)
@@ -357,12 +368,34 @@ tr.summary td{font-weight:700;background:#eff6ff;border-top:2px solid #2563eb}
   </div>
 </div>
 
+<!-- 退货分析 Tab（2026-07-30 新增） -->
+<div class="tab-content" id="tab-return">
+  <div style="margin-bottom:12px;display:flex;gap:10px;align-items:center;background:#fff;padding:8px 16px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08)">
+    <label style="font-size:12px;color:#6b7280;font-weight:500">品类</label>
+    <select id="returnCat" onchange="renderReturn()" style="border:1px solid #d1d5db;border-radius:6px;padding:5px 10px;font-size:13px;background:#fff">
+      <option value="all">全部</option><option value="luggage">行李箱</option><option value="bag">包袋</option>
+    </select>
+  </div>
+  <div class="kpi-grid" id="returnKpi"></div>
+  <div class="chart-row">
+    <div class="chart-box"><h3>系列退货金额排行</h3><canvas id="returnRankChart"></canvas></div>
+    <div class="chart-box"><h3>渠道退货占比</h3><canvas id="returnPieChart"></canvas></div>
+  </div>
+  <div class="chart-row">
+    <div class="chart-box full"><h3>退货金额趋势 <small id="returnTrendLabel"></small></h3><canvas id="returnTrendChart"></canvas></div>
+  </div>
+</div>
+
 </div>
 
 <script>
 const CHANNELS = ''' + json.dumps(all_series_data['meta']['channels'], ensure_ascii=False) + r''';
 const ALL_SERIES = ''' + json.dumps(ALL_SERIES_LIST, ensure_ascii=False) + r''';
 const AUDIENCES = ''' + json.dumps(AUDIENCE_LIST, ensure_ascii=False) + r''';
+// === 退货数据（2026-07-30 新增） ===
+const RET_ALL_DAILY = ''' + ret_all_json_str + r''';
+const RET_LUG_DAILY = ''' + ret_lug_json_str + r''';
+const RET_BAG_DAILY = ''' + ret_bag_json_str + r''';
 const LUG_DAILY = ''' + luggage_json_str + r''';
 const BAG_DAILY = ''' + bag_json_str + r''';
 const ALL_DAILY = ''' + all_json_str + r''';
@@ -396,6 +429,7 @@ const tabs=[
   {id:'audience',icon:'users',label:'人群看板'},
   {id:'size',icon:'ruler',label:'尺寸看板'},
   {id:'color',icon:'palette',label:'颜色看板'},
+  {id:'return',icon:'rotate-ccw',label:'退货分析'},
 ];
 const navEl=document.getElementById('nav');
 navEl.innerHTML='<span class="brand">ITO 产品分析</span>';
@@ -418,6 +452,7 @@ function switchTab(id){
   if(id==='audience')renderAudience();
   if(id==='size')renderSize();
   if(id==='color')renderColor();
+  if(id==='return')renderReturn();
   if(id==='series-detail')renderSeriesTab();
   if(id==='sku')renderSKU();
 }
@@ -1577,6 +1612,93 @@ function renderCompareRow(containerId,data,ch,start,end,metric){
   var isUp=diffV>=0;
   compareEl.innerHTML='<div class="kpi-card"><div class="label">\u5bf9\u6bd4\u671f '+(metric==='amt'?'\u9500\u552e\u989d':'\u9500\u91cf')+'</div><div class="value">'+(metric==='amt'?fmtD(cTotal):cTotal.toLocaleString())+'</div><div class="sub" style="color:#9ca3af;font-size:10px">'+cStart+' ~ '+cEnd+'</div></div><div class="kpi-card"><div class="label">\u53d8\u5316\u989d</div><div class="value '+(isUp?'up':'down')+'">'+(isUp?'+':'')+(metric==='amt'?fmtD(diffV):diffV.toLocaleString())+'</div><div class="sub" style="color:#9ca3af;font-size:10px">\u53d8\u5316\u7387: '+(diffP==='-'?'-':(isUp?'+':'')+diffP+'%')+'</div></div>';
   compareEl.classList.add('show');
+}
+
+// ===== 退货分析（2026-07-30 新增） =====
+function renderReturn(){
+  var cat=document.getElementById('returnCat').value;
+  var daily=cat==='luggage'?LUG_DAILY:cat==='bag'?BAG_DAILY:ALL_DAILY;
+  var retD=cat==='luggage'?RET_LUG_DAILY:cat==='bag'?RET_BAG_DAILY:RET_ALL_DAILY;
+  var chs=CHANNELS;
+  var totalRet=0,totalSales=0,seriesMap={},chMap={};
+  var dates=getDatesInRange(startDate,endDate);
+  dates.forEach(function(d){
+    if(!retD[d])return;
+    Object.keys(retD[d]).forEach(function(ch){
+      var chData=retD[d][ch];
+      if(!chData)return;
+      Object.keys(chData).forEach(function(sk){
+        var v=chData[sk];
+        if(!v)return;
+        totalRet+=v.return_amt||0;
+        // 取同期销售额用于计算退货率
+        if(daily[d]&&daily[d][ch]){
+          var s=daily[d][ch][sk];
+          if(s) totalSales+=s.amt||0;
+        }
+        if(sk!=='$total'){
+          seriesMap[sk]=seriesMap[sk]||{amt:0,qty:0};
+          seriesMap[sk].amt+=v.return_amt||0;
+          seriesMap[sk].qty+=v.return_qty||0;
+        }
+      });
+      // 渠道维度汇总
+      var chTot=chData['$total'];
+      if(chTot){
+        chMap[ch]=chMap[ch]||{amt:0,qty:0};
+        chMap[ch].amt+=chTot.return_amt||0;
+        chMap[ch].qty+=chTot.return_qty||0;
+      }
+    });
+  });
+  var rate=totalSales>0?(totalRet/totalSales*100):0;
+  // KPI
+  document.getElementById('returnKpi').innerHTML=
+    '<div class="kpi-card"><div class="label">退货金额</div><div class="value">'+fmtD(totalRet)+'</div></div>'+
+    '<div class="kpi-card"><div class="label">退货数量</div><div class="value">'+Math.round(totalRet/10000).toLocaleString()+'笔</div></div>'+
+    '<div class="kpi-card"><div class="label">退货率</div><div class="value" style="color:'+(rate>10?'#dc2626':'#059669')+'">'+rate.toFixed(1)+'%</div><div class="sub">退货/销售</div></div>'+
+    '<div class="kpi-card"><div class="label">退货占比<<总销售</div><div class="value" style="color:#8b5cf6">'+(totalSales>0?(totalRet/totalSales*100).toFixed(1):'-')+'%</div></div>';
+  // 趋势图
+  var labels=[],retData=[];
+  dates.forEach(function(d){
+    var v=0;
+    if(retD[d]) Object.keys(retD[d]).forEach(function(ch){
+      var t=retD[d][ch]['$total']; if(t) v+=t.return_amt||0;
+    });
+    labels.push(d.slice(5));
+    retData.push(v);
+  });
+  if(window.retTrendChart)window.retTrendChart.destroy();
+  window.retTrendChart=new Chart(document.getElementById('returnTrendChart'),{
+    type:'bar',data:{labels:labels,datasets:[{label:'退货金额',data:retData,backgroundColor:'rgba(220,38,38,.65)',borderColor:'#dc2626',borderWidth:1,borderRadius:3}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{y:{beginAtZero:true,ticks:{callback:function(v){return v>=10000?Math.round(v/10000)+'万':v}}}}}
+  });
+  // 系列排行（Top15）
+  var sorted=Object.keys(seriesMap).sort(function(a,b){return seriesMap[b].amt-seriesMap[a].amt}).slice(0,15);
+  var rLabels=[],rData=[],rColors=[];
+  sorted.forEach(function(sk,i){
+    rLabels.push(sk);
+    rData.push(seriesMap[sk].amt);
+    rColors.push(i===0?'#dc2626':i<3?'#ea580c':'#f97316');
+  });
+  if(window.retRankChart)window.retRankChart.destroy();
+  window.retRankChart=new Chart(document.getElementById('returnRankChart'),{
+    type:'bar',data:{labels:rLabels,datasets:[{label:'退货金额',data:rData,backgroundColor:rColors,borderRadius:3}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{x:{ticks:{callback:function(v){return v>=10000?Math.round(v/10000)+'万':v}}}}}
+  });
+  // 渠道占比
+  var chSorted=Object.keys(chMap).sort(function(a,b){return chMap[b].amt-chMap[a].amt});
+  var pieColors=['#dc2626','#ea580c','#f97316','#fbbf24','#a3e635','#34d399','#06b6d4','#6366f1','#a855f7'];
+  if(window.retPieChart)window.retPieChart.destroy();
+  window.retPieChart=new Chart(document.getElementById('returnPieChart'),{
+    type:'doughnut',
+    data:{labels:chSorted,datasets:[{data:chSorted.map(function(c){return chMap[c].amt}),backgroundColor:pieColors.slice(0,chSorted.length),borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}}}}
+  });
 }
 '''
 
