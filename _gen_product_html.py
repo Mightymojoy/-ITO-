@@ -1404,7 +1404,7 @@ function renderSKU(keepFilters){
   var totalForPct=seriesTotal[metric]||1;
   html+='<h3 style="font-size:13px;margin:12px 0 8px;color:#374151">颜色×尺寸销售矩阵</h3><div class="table-wrap" style="margin-bottom:14px"><table><thead><tr><th>颜色 \\ 尺寸</th>';
   sizesSorted.forEach(function(sz){html+='<th style="font-size:11px;text-align:center">'+sz+'</th>';});
-  html+='<th style="font-size:11px;text-align:center;background:#f3f4f6">小计</th></tr></thead><tbody>';
+  html+='<th style="font-size:11px;text-align:center;background:#f3f4f6">小计<br><span style="font-size:10px;color:#9ca3af;font-weight:400">绝对值 / 占比</span></th></tr></thead><tbody>';
   colorsSorted.forEach(function(col){
     html+='<tr><td style="font-weight:500;white-space:nowrap">'+col+'</td>';
     var colAmt=0;
@@ -1412,27 +1412,28 @@ function renderSKU(keepFilters){
       var v=colorMap[col]&&colorMap[col][sz]?colorMap[col][sz][metric]||0:0;
       colAmt+=v;
       if(v>0){
-        var pct=Math.round(v/totalForPct*100);
-        html+='<td onclick="showSKUDetail(\''+selSeries+'|'+col+'|'+sz+'\')" style="cursor:pointer;background:rgba(37,99,235,'+(v/totalForPct*5+0.1).toFixed(2)+');text-align:center;font-weight:600">'+(metric==='amt'?fmtD(v):Math.round(v).toLocaleString())+'<br><span style="font-size:12px;font-weight:600;color:'+(v/totalForPct>0.1?'#fff':'#374151')+'">'+pct+'%</span></td>';
+        html+='<td onclick="showSKUDetail(\''+selSeries+'|'+col+'|'+sz+'\')" style="cursor:pointer;background:rgba(37,99,235,'+(v/totalForPct*5+0.1).toFixed(2)+');text-align:center;font-weight:600">'+(metric==='amt'?fmtD(v):Math.round(v).toLocaleString())+'</td>';
       }else{
         html+='<td style="text-align:center;color:#d1d5db">—</td>';
       }
     });
-    html+='<td style="text-align:center;font-weight:600;background:#f3f4f6">'+(metric==='amt'?fmtD(colAmt):Math.round(colAmt).toLocaleString())+'</td></tr>';
+    var colPct=totalForPct>0?Math.round(colAmt/totalForPct*100):0;
+    html+='<td style="text-align:center;font-weight:600;background:#f3f4f6">'+(metric==='amt'?fmtD(colAmt):Math.round(colAmt).toLocaleString())+'<br><span style="font-size:11px;color:#374151;font-weight:500">'+colPct+'%</span></td></tr>';
   });
   html+='<tr class="summary"><td>合计</td>';
   sizesSorted.forEach(function(sz){
     var szAmt=0;
     colorsSorted.forEach(function(col){if(colorMap[col]&&colorMap[col][sz])szAmt+=colorMap[col][sz][metric]||0;});
-    html+='<td style="text-align:center">'+(metric==='amt'?fmtD(szAmt):Math.round(szAmt).toLocaleString())+'</td>';
+    var szPct=totalForPct>0?Math.round(szAmt/totalForPct*100):0;
+    html+='<td style="text-align:center;padding:6px 4px"><div style="display:flex;justify-content:center;align-items:center;gap:8px"><span style="font-weight:600">'+(metric==='amt'?fmtD(szAmt):Math.round(szAmt).toLocaleString())+'</span><span style="font-size:11px;color:#374151">'+szPct+'%</span></div></td>';
   });
-  html+='<td style="text-align:center;font-weight:700">'+(metric==='amt'?fmtD(seriesTotal[metric]):Math.round(seriesTotal[metric]).toLocaleString())+'</td></tr>';
+  html+='<td style="text-align:center;padding:6px 4px"><div style="display:flex;justify-content:center;align-items:center;gap:8px"><span style="font-weight:700">'+(metric==='amt'?fmtD(seriesTotal[metric]):Math.round(seriesTotal[metric]).toLocaleString())+'</span><span style="font-size:11px;font-weight:500">100%</span></div></td></tr>';
   html+='</tbody></table></div>';
 
   // 帕累托
   var sortedSKU=Object.entries(seriesDaily).sort(function(a,b){return b[1][metric]-a[1][metric];});
   var cumul=0;
-  html+='<div class="chart-box full" style="margin-bottom:14px"><h3>帕累托分析 (ABC)</h3><div class="table-wrap"><table><thead><tr><th>#</th><th>SKU</th><th>'+(metric==='amt'?'销售额':'销量')+'</th><th>占比</th><th>累计</th><th>等级</th></tr></thead><tbody>';
+  html+='<div class="chart-box full" style="margin-bottom:14px"><h3>帕累托分析 (ABC)</h3><div class="table-wrap"><table><thead><tr><th>#</th><th>SKU</th><th>'+(metric==='amt'?'销售额（绝对值）':'销量（绝对值）')+'</th><th>占比</th><th>累计</th><th>等级</th></tr></thead><tbody>';
   sortedSKU.forEach(function(sk,i){
     cumul+=sk[1][metric];
     var pct=Math.round(sk[1][metric]/totalForPct*100);
