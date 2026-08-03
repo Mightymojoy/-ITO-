@@ -1379,8 +1379,8 @@ function renderSKU(keepFilters){
   // KPI
   var topSKU=Object.entries(seriesDaily).sort(function(a,b){return b[1][metric]-a[1][metric]})[0];
   html+='<div class="kpi-grid"><div class="kpi-card"><div class="label">SKU数</div><div class="value">'+skuCount+'</div></div>';
-  html+='<div class="kpi-card"><div class="label">'+selSeries+' '+(metric==='amt'?'销售额':'销量')+'</div><div class="value">'+(metric==='amt'?fmtD(seriesTotal.amt):Math.round(seriesTotal.qty).toLocaleString())+'</div></div>';
-  if(topSKU)html+='<div class="kpi-card"><div class="label">TOP1 SKU</div><div class="value" style="font-size:14px">'+topSKU[0].split('|').slice(1).join(' / ')+'</div><div class="sub">'+(metric==='amt'?fmtD(topSKU[1][metric]):topSKU[1][metric].toLocaleString())+'</div></div>';
+  html+='<div class="kpi-card"><div class="label">'+selSeries+' '+(metric==='amt'?'销售额':'销量')+'</div><div class="value">'+(metric==='amt'?Math.round(seriesTotal.amt).toLocaleString():Math.round(seriesTotal.qty).toLocaleString())+'</div></div>';
+  if(topSKU)html+='<div class="kpi-card"><div class="label">TOP1 SKU</div><div class="value" style="font-size:14px">'+topSKU[0].split('|').slice(1).join(' / ')+'</div><div class="sub">'+(metric==='amt'?Math.round(topSKU[1][metric]).toLocaleString():topSKU[1][metric].toLocaleString())+'</div></div>';
   html+='</div>';
 
   // 提炼颜色和尺寸
@@ -1412,22 +1412,23 @@ function renderSKU(keepFilters){
       var v=colorMap[col]&&colorMap[col][sz]?colorMap[col][sz][metric]||0:0;
       colAmt+=v;
       if(v>0){
-        html+='<td onclick="showSKUDetail(\''+selSeries+'|'+col+'|'+sz+'\')" style="cursor:pointer;background:rgba(37,99,235,'+(v/totalForPct*5+0.1).toFixed(2)+');text-align:center;font-weight:600">'+(metric==='amt'?fmtD(v):Math.round(v).toLocaleString())+'</td>';
+        var pct=Math.round(v/totalForPct*100);
+        html+='<td onclick="showSKUDetail(\''+selSeries+'|'+col+'|'+sz+'\')" style="cursor:pointer;background:rgba(37,99,235,'+(v/totalForPct*5+0.1).toFixed(2)+');text-align:center;font-weight:600">'+(metric==='amt'?Math.round(v).toLocaleString():Math.round(v).toLocaleString())+'<br><span style="font-size:12px;font-weight:600;color:'+(v/totalForPct>0.1?'#fff':'#374151')+'">'+pct+'%</span></td>';
       }else{
         html+='<td style="text-align:center;color:#d1d5db">—</td>';
       }
     });
     var colPct=totalForPct>0?Math.round(colAmt/totalForPct*100):0;
-    html+='<td style="text-align:center;font-weight:600;background:#f3f4f6">'+(metric==='amt'?fmtD(colAmt):Math.round(colAmt).toLocaleString())+'<br><span style="font-size:11px;color:#374151;font-weight:500">'+colPct+'%</span></td></tr>';
+    html+='<td style="text-align:center;font-weight:600;background:#f3f4f6">'+(metric==='amt'?Math.round(colAmt).toLocaleString():Math.round(colAmt).toLocaleString())+'<br><span style="font-size:11px;color:#374151;font-weight:500">'+colPct+'%</span></td></tr>';
   });
   html+='<tr class="summary"><td>合计</td>';
   sizesSorted.forEach(function(sz){
     var szAmt=0;
     colorsSorted.forEach(function(col){if(colorMap[col]&&colorMap[col][sz])szAmt+=colorMap[col][sz][metric]||0;});
     var szPct=totalForPct>0?Math.round(szAmt/totalForPct*100):0;
-    html+='<td style="text-align:center;padding:6px 4px"><div style="display:flex;justify-content:center;align-items:center;gap:8px"><span style="font-weight:600">'+(metric==='amt'?fmtD(szAmt):Math.round(szAmt).toLocaleString())+'</span><span style="font-size:11px;color:#374151">'+szPct+'%</span></div></td>';
+    html+='<td style="text-align:center;padding:6px 4px"><div style="display:flex;justify-content:center;align-items:center;gap:8px"><span style="font-weight:600">'+(metric==='amt'?Math.round(szAmt).toLocaleString():Math.round(szAmt).toLocaleString())+'</span><span style="font-size:11px;color:#374151">'+szPct+'%</span></div></td>';
   });
-  html+='<td style="text-align:center;padding:6px 4px"><div style="display:flex;justify-content:center;align-items:center;gap:8px"><span style="font-weight:700">'+(metric==='amt'?fmtD(seriesTotal[metric]):Math.round(seriesTotal[metric]).toLocaleString())+'</span><span style="font-size:11px;font-weight:500">100%</span></div></td></tr>';
+  html+='<td style="text-align:center;padding:6px 4px"><div style="display:flex;justify-content:center;align-items:center;gap:8px"><span style="font-weight:700">'+(metric==='amt'?Math.round(seriesTotal[metric]).toLocaleString():Math.round(seriesTotal[metric]).toLocaleString())+'</span><span style="font-size:11px;font-weight:500">100%</span></div></td></tr>';
   html+='</tbody></table></div>';
 
   // 帕累托
@@ -1439,7 +1440,7 @@ function renderSKU(keepFilters){
     var pct=Math.round(sk[1][metric]/totalForPct*100);
     var cumPct=Math.round(cumul/totalForPct*100);
     var grade=cumPct<=70?'<span style="color:#dc2626;font-weight:700">A</span>':cumPct<=90?'<span style="color:#d97706;font-weight:700">B</span>':'<span style="color:#6b7280">C</span>';
-    html+='<tr><td>'+(i+1)+'</td><td>'+sk[0].split('|').slice(1).join(' / ')+'</td><td>'+(metric==='amt'?fmtD(sk[1][metric]):Math.round(sk[1][metric]).toLocaleString())+'</td><td>'+pct+'%</td><td>'+cumPct+'%</td><td>'+grade+'</td></tr>';
+    html+='<tr><td>'+(i+1)+'</td><td>'+sk[0].split('|').slice(1).join(' / ')+'</td><td>'+(metric==='amt'?Math.round(sk[1][metric]).toLocaleString():Math.round(sk[1][metric]).toLocaleString())+'</td><td>'+pct+'%</td><td>'+cumPct+'%</td><td>'+grade+'</td></tr>';
   });
   html+='</tbody></table></div></div>';
   html+='<div style="padding:8px 14px;background:#f9fafb;border-radius:0 0 10px 10px;font-size:11px;color:#6b7280;border-top:1px solid #e5e7eb">';
@@ -1552,7 +1553,7 @@ function showSKUDetail(skuKey){
 
   var html='<div class="chart-box full"><h3>SKU详情: '+color+' / '+size+'</h3>';
   html+='<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:8px">';
-  html+='<div class="kpi-card"><div class="label">'+(metric==='amt'?'销售额':'销量')+'</div><div class="value" style="font-size:18px">'+(metric==='amt'?fmtD(total.amt):Math.round(total.qty).toLocaleString())+'</div><div class="sub" style="font-size:10px;color:#2563eb">筛选期内</div></div>';
+  html+='<div class="kpi-card"><div class="label">'+(metric==='amt'?'销售额':'销量')+'</div><div class="value" style="font-size:18px">'+(metric==='amt'?Math.round(total.amt).toLocaleString():Math.round(total.qty).toLocaleString())+'</div><div class="sub" style="font-size:10px;color:#2563eb">筛选期内</div></div>';
   html+='<div class="kpi-card"><div class="label">均价</div><div class="value" style="font-size:18px">¥'+(total.qty?Math.round(total.amt/total.qty).toLocaleString():'—')+'</div></div>';
   html+='<div class="kpi-card"><div class="label">趋势方向</div><div class="value" style="font-size:18px">'+(trendNow.length>1?(trendNow[trendNow.length-1]>=trendNow[0]?'<span class="up">▲ 上升</span>':'<span class="down">▼ 下降</span>'):'—')+'</div><div class="sub" style="font-size:10px;color:#9ca3af">首尾对比</div></div>';
   html+='</div>';
