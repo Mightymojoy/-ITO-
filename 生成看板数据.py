@@ -138,12 +138,12 @@ def get_val(ch_data, date_str, key):
     return 0
 
 # ===== STEP 1: 拆分摩登新贵女中的达播部分 =====
-# 达播-行李箱：预算=H, 目标=G, 实际+预估=I
-dabo_luggage = read_dabo_channel('dabo_luggage_actual', 'dabo_luggage_target', 'dabo_luggage_forecast', 'dabo_luggage_ft')
-# 达播-包袋：预算=K, 目标=J, 实际+预估=L
-dabo_bag = read_dabo_channel('dabo_bag_actual', 'dabo_bag_target', 'dabo_bag_forecast', 'dabo_bag_ft')
-# 小红书达播：预算=N, 目标=M, 实际+预估=O
-xhs_dabo = read_dabo_channel('xhs_actual', 'xhs_target', 'xhs_forecast', 'xhs_ft')
+# 达播sheet列：G=预估, H=目标（预算）, I=预估+目标；operating_target 应取目标列 H/K/N（修复2026-08-04：之前误读预估列G/J/M）
+dabo_luggage = read_dabo_channel('dabo_luggage_actual', 'dabo_luggage_target', 'dabo_luggage_target', 'dabo_luggage_ft')
+# 达播-包袋：预算=K, 目标=K, 实际+预估=L
+dabo_bag = read_dabo_channel('dabo_bag_actual', 'dabo_bag_target', 'dabo_bag_target', 'dabo_bag_ft')
+# 小红书达播：预算=N, 目标=N, 实际+预估=O
+xhs_dabo = read_dabo_channel('xhs_actual', 'xhs_target', 'xhs_target', 'xhs_ft')
 
 all_data['抖音达播-行李箱'] = dabo_luggage
 all_data['抖音达播-包袋'] = dabo_bag
