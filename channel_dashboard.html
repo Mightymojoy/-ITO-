@@ -124,6 +124,32 @@ header{display:flex;justify-content:space-between;align-items:flex-end;
 .g-card .gamt{font-size:12px;color:var(--ink-3)}
 footer{margin-top:48px;text-align:center;font-size:12px;color:var(--ink-3)}
 @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+/* 对比周期 / 去年同期（2026-08-05 新增） */
+.cb-toggle{display:none}
+.compare-btn{display:inline-flex;align-items:center;gap:4px;padding:6px 14px;
+  border:1px dashed var(--gold);border-radius:10px;background:transparent;
+  color:var(--gold-deep);font-size:12.5px;font-weight:600;cursor:pointer;
+  transition:.18s;user-select:none;font-family:inherit}
+.compare-btn:hover{background:rgba(201,169,98,.10);border-style:solid}
+.cb-toggle:checked + .compare-btn{background:var(--gold);color:#fff;border-style:solid}
+.compare-period{display:none;align-items:center;gap:7px}
+.cb-toggle:checked ~ .compare-period{display:inline-flex}
+.compare-period input[type=date]{border:1px solid var(--line);border-radius:8px;
+  padding:5px 9px;font-size:12.5px;font-family:inherit;color:var(--ink-2);background:#fff}
+.compare-row{display:none;grid-column:1/-1;margin:20px 0 4px;padding-top:16px;
+  position:relative;animation:rise .5s both;border-top:2px dashed var(--gold)}
+.compare-row.show{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
+.compare-row::before{content:'对比周期';position:absolute;top:-10px;left:18px;font-size:10px;
+  color:var(--gold-deep);background:var(--bg);padding:0 12px;font-weight:700;letter-spacing:.06em}
+.compare-row .c-card{background:var(--card);border:1px solid var(--line);border-radius:18px;
+  padding:18px 22px;box-shadow:var(--shadow)}
+.compare-row .c-card .lab{font-size:12px;color:var(--ink-2);font-weight:600}
+.compare-row .c-card .val{font-size:24px;font-weight:800;margin:8px 0 4px;letter-spacing:.01em}
+.compare-row .c-card .sub{font-size:11px;color:var(--ink-3);margin-top:4px}
+.compare-row .c-card .sub strong{font-weight:700}
+.trend-legend{display:inline-flex;align-items:center;gap:14px;font-size:11px;
+  color:var(--ink-3);margin-top:6px}
+.trend-legend .lg-dot{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:4px;border-radius:2px}
 @media(max-width:900px){
   .kpi-grid,.g-grid{grid-template-columns:repeat(2,1fr)}
   .charts{grid-template-columns:1fr}
@@ -173,6 +199,21 @@ footer{margin-top:48px;text-align:center;font-size:12px;color:var(--ink-3)}
     <div class="grp custom">
       <input type="date" id="dStart"> <span>至</span> <input type="date" id="dEnd">
     </div>
+    <div class="grp">
+      <input type="checkbox" id="chkCompare" class="cb-toggle">
+      <label for="chkCompare" class="compare-btn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>对比
+      </label>
+      <div class="compare-period">
+        <span style="color:var(--ink-3);font-size:12px">对比</span>
+        <input type="date" id="cStart" value="2026-06-01">
+        <span style="color:var(--ink-3);font-size:12px">至</span>
+        <input type="date" id="cEnd" value="2026-06-30">
+        <label style="display:inline-flex;align-items:center;gap:4px;margin-left:10px;font-size:12.5px;color:var(--ink-2);cursor:pointer;user-select:none">
+          <input type="checkbox" id="chkYoy" checked style="accent-color:var(--gold);cursor:pointer"> 显示去年同期
+        </label>
+      </div>
+    </div>
   </div>
 
   <div class="channel-row" id="chRow"></div>
@@ -182,6 +223,7 @@ footer{margin-top:48px;text-align:center;font-size:12px;color:var(--ink-3)}
     <span class="en" id="kpiEn">Overview</span>
   </div>
   <div class="kpi-grid" id="kpiGrid"></div>
+  <div class="compare-row" id="kpiCompareRow"></div>
 
   <div class="sec-title">
     <span class="bar"></span><h2 id="trendTitle">趋势对比</h2>
@@ -312,7 +354,8 @@ const QUICK = {
   month:[{t:'近6月',a:'lastm',n:6},{t:'近12月',a:'lastm',n:12},{t:'本年',a:'year'},{t:'全部',a:'all'}]
 };
 const DEF_QUICK = {day:1, week:1, month:1};  // 默认选中第几个快捷
-const state = {period:'day', start:null, end:null, quickIdx:1, channels:CHANNELS.slice(), chMode:'all'};
+const state = {period:'day', start:null, end:null, quickIdx:1, channels:CHANNELS.slice(), chMode:'all',
+  compareOn:false, cStart:'2026-06-01', cEnd:'2026-06-30', showYoy:true};
 
 function computeRange(q){
   const t=parseD(TODAY);
@@ -377,6 +420,9 @@ function renderKPI(){
   const [ps,pe]=prevRange(s,e); const pa=sumRange(chs,ps,pe,0);
   const mom=pa>0?(a/pa-1)*100:null;
   const fc_vs_actual=a?((f-a)/a*100):null;
+  // 对比期数据（仅在 compareOn 时计算）
+  const cA=state.compareOn?sumRange(chs,state.cStart,state.cEnd,0):0;
+  const cO=state.compareOn?sumRange(chs,state.cStart,state.cEnd,2):0;
 
   const periodName={day:'日',week:'周',month:'月'}[p];
   $('#kpiTitle').textContent='核心指标 · '+periodName+'度区间';
@@ -385,7 +431,7 @@ function renderKPI(){
   const spVals = buckets(s,e,p,chs).map(x=>x.a);
   const kpis=[
     {ic:ICON.gmv, lab:periodName+'度实际 GMV', val:wan(a), unit:'万',
-     d:(yoy!=null?delta(yoy,'%'):'<span class="delta">—</span>')+' <span style="color:var(--ink-3);font-weight:500">|</span> 环比 '+delta(mom,'%'),
+     d:(state.showYoy&&yoy!=null?delta(yoy,'%'):'<span class="delta">—</span>')+' <span style="color:var(--ink-3);font-weight:500">|</span> 环比 '+delta(mom,'%'),
      sp:spVals, sub:''},
     {ic:ICON.target, lab:'预算达成率', val:br==null?'—':br.toFixed(1), unit:br==null?'':'%',
      d:delta(null), sp:null, sub:br==null?'区间内无预算目标':'缺口 '+wan(b-af)+'万'},
@@ -403,6 +449,38 @@ function renderKPI(){
       <div class="spark tnum" style="font-size:11px;color:var(--ink-3)">${x.sp?spark(x.sp):''}</div>
       ${x.sub?`<div style="margin-top:3px;font-size:11px;color:var(--ink-3)">${x.sub}</div>`:''}
     </div>`).join('');
+
+  /* 对比周期行 */
+  const row=$('#kpiCompareRow');
+  if(!state.compareOn || !state.cStart || !state.cEnd){
+    row.classList.remove('show'); row.innerHTML=''; return;
+  }
+  const cDays=diffDays(state.cStart,state.cEnd)+1;
+  const diffV=a-cA;
+  const diffP=cA>0?(diffV/cA*100):null;
+  const isUp=diffV>=0;
+  row.innerHTML = `
+    <div class="c-card" style="animation-delay:.0s">
+      <div class="lab">对比期实际 GMV</div>
+      <div class="val tnum">${wan(cA)}<small style="font-size:13px;color:var(--ink-3);font-weight:600;margin-left:3px">万</small></div>
+      <div class="sub tnum">${state.cStart} ~ ${state.cEnd} <span style="margin:0 4px;color:var(--line)">|</span> ${cDays} 天</div>
+    </div>
+    <div class="c-card" style="animation-delay:.06s">
+      <div class="lab">对比期经营目标</div>
+      <div class="val tnum" style="color:var(--ink-2)">${cO?wan(cO):'—'}<small style="font-size:13px;color:var(--ink-3);font-weight:600;margin-left:3px">${cO?'万':''}</small></div>
+      <div class="sub">${cO?('对比期目标 '+wan(cO)+'万'):'对比期无目标数据'}</div>
+    </div>
+    <div class="c-card" style="animation-delay:.12s">
+      <div class="lab">变化额（当期 - 对比期）</div>
+      <div class="val tnum ${isUp?'up':'down'}">${isUp?'+':'−'}<span style="margin-left:2px">${wan(Math.abs(diffV))}</span><small style="font-size:13px;font-weight:600;margin-left:3px">万</small></div>
+      <div class="sub">当期 ${wan(a)}万 <span style="color:var(--ink-3)">/</span> 对比 ${wan(cA)}万</div>
+    </div>
+    <div class="c-card" style="animation-delay:.18s">
+      <div class="lab">变化率</div>
+      <div class="val tnum" style="color:${diffP==null?'#9a9183':(isUp?'#2e7d52':'#c0492f')}">${diffP==null?'—':(isUp?'+':'')+diffP.toFixed(1)}<small style="font-size:15px;font-weight:700;color:var(--ink-3);margin-left:2px">%</small></div>
+      <div class="sub">${cA>0?('对比期 GMV '+wan(cA)+'万 · 等长区间对照'):'对比期无销售数据'}</div>
+    </div>`;
+  row.classList.add('show');
 }
 
 function renderTrend(){
@@ -410,16 +488,32 @@ function renderTrend(){
   const periodName={day:'日',week:'周',month:'月'}[state.period];
   $('#trendCardTitle').textContent=periodName+'度实际 GMV vs 经营目标';
   const span=diffDays(state.start,state.end)+1;
-  $('#trendHint').textContent='区间 '+state.start+' ~ '+state.end+'（'+span+' 天，'+bks.length+' 个'+periodName+'度桶）';
+  const yoyHint=state.showYoy?' · 含去年同期虚线':'';
+  const cmpHint=state.compareOn?' · 含对比期实际线':'';
+  $('#trendHint').textContent='区间 '+state.start+' ~ '+state.end+'（'+span+' 天，'+bks.length+' 个'+periodName+'度桶）'+yoyHint+cmpHint;
 
   const W=620,H=240,pl=46,pr=14,pt=18,pb=34;
   const iw=W-pl-pr, ih=H-pt-pb;
   const A=bks.map(b=>b.a), T=bks.map(b=>b.o), L=bks.map(b=>b.label);
-  const maxv=Math.max.apply(null,A.concat(T).concat([1]))*1.12;
+  // 去年同期序列（按 bucket 索引对齐，长度不足/超出用 null）
+  let YoY=[];
+  if(state.showYoy){
+    const [lys,lye]=lyRange(state.start,state.end);
+    const lyBks=buckets(lys,lye,state.period,state.channels);
+    for(let i=0;i<A.length;i++) YoY.push(lyBks[i]?lyBks[i].a:null);
+  }
+  // 对比期实际序列（勾选对比时显示，与当期实际柱状对照）
+  let CMP=[];
+  if(state.compareOn && state.cStart && state.cEnd){
+    const cmpBks=buckets(state.cStart,state.cEnd,state.period,state.channels);
+    for(let i=0;i<A.length;i++) CMP.push(cmpBks[i]?cmpBks[i].a:null);
+  }
+  const allVals=A.concat(T).concat(YoY.filter(v=>v!=null)).concat(CMP.filter(v=>v!=null)).concat([1]);
+  const maxv=Math.max.apply(null,allVals)*1.12;
   const n=A.length, bw=Math.min(iw/n*0.6,40), gap=iw/n;
   const y=v=>pt+ih-(v/maxv)*ih;
   const xc=i=>pl+gap*i+gap/2;
-  let bars='', line='', dots='', xl='';
+  let bars='', line='', dots='', yoySvg='', cmpSvg='', xl='';
   const step=Math.max(1,Math.ceil(n/16));
   A.forEach((v,i)=>{
     const bx=xc(i)-bw/2;
@@ -428,16 +522,43 @@ function renderTrend(){
     dots+=`<circle cx="${xc(i)}" cy="${y(T[i])}" r="3.5" fill="#fff" stroke="#5b554a" stroke-width="2"><title>${L[i]} 目标 ${fmt(T[i])}</title></circle>`;
     if(i%step===0 || i===n-1) xl+=`<text x="${xc(i)}" y="${H-12}" text-anchor="middle" font-size="11" fill="#9a9183">${L[i]}</text>`;
   });
+  // 对比期实际折线（蓝色实线，仅在勾选对比时绘制）
+  if(CMP.length){
+    let cmpLine='', cmpDots='';
+    CMP.forEach((v,i)=>{
+      if(v==null) return;
+      cmpLine += `${cmpLine?'L':'M'}${xc(i)},${y(v)} `;
+      cmpDots += `<circle cx="${xc(i)}" cy="${y(v)}" r="3" fill="#fff" stroke="#4a7fb5" stroke-width="2"><title>${L[i]} 对比期 ${fmt(v)}</title></circle>`;
+    });
+    if(cmpLine) cmpSvg=`<path d="${cmpLine}" fill="none" stroke="#4a7fb5" stroke-width="2.2"/>`+cmpDots;
+  }
+  // 去年同期折线（仅在 showYoy 时绘制）
+  if(state.showYoy && YoY.length){
+    let yoyLine='', yoyDots='';
+    YoY.forEach((v,i)=>{
+      if(v==null) return;
+      yoyLine += `${yoyLine?'L':'M'}${xc(i)},${y(v)} `;
+      yoyDots += `<circle cx="${xc(i)}" cy="${y(v)}" r="2.5" fill="#fff" stroke="#9a9183" stroke-width="1.5"><title>${L[i]} 同期 ${fmt(v)}</title></circle>`;
+    });
+    if(yoyLine) yoySvg=`<path d="${yoyLine}" fill="none" stroke="#9a9183" stroke-width="1.8" stroke-dasharray="5 4" opacity=".85"/>`+yoyDots;
+  }
   let grid='';
   for(let g=0;g<=4;g++){const gv=maxv*g/4; const gy=y(gv);
     grid+=`<line x1="${pl}" y1="${gy}" x2="${W-pr}" y2="${gy}" stroke="rgba(201,169,98,.12)"/>`+
           `<text x="${pl-8}" y="${gy+4}" text-anchor="end" font-size="10" fill="#9a9183">${Math.round(gv/10000)}万</text>`;}
+  // 图例（随开关动态增减）
+  let legend=`<div class="trend-legend">`+
+    `<span><span class="lg-dot" style="background:linear-gradient(90deg,#d9bd7e,#c9a962)"></span>当期实际</span>`+
+    `<span><span class="lg-dot" style="background:#5b554a"></span>经营目标</span>`;
+  if(state.compareOn) legend+=`<span><span class="lg-dot" style="background:#4a7fb5"></span>对比期实际</span>`;
+  if(state.showYoy) legend+=`<span><span class="lg-dot" style="background:#9a9183;height:2px"></span>去年同期</span>`;
+  legend+=`</div>`;
   $('#trend').innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%">
     <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#d9bd7e"/><stop offset="1" stop-color="#c9a962"/></linearGradient></defs>
     ${grid}${bars}
     <path d="${line}" fill="none" stroke="#5b554a" stroke-width="2.2" stroke-dasharray="5 4"/>
-    ${dots}${xl}</svg>`;
+    ${dots}${cmpSvg}${yoySvg}${xl}</svg>${legend}`;
 }
 
 function channelStats(s,e,chs){
@@ -469,7 +590,7 @@ function renderRank(){
       <div class="num"><div class="rt tnum" style="color:${color||'#9a9183'}">${na?'—':c.rate+'%'}</div>
         <div class="amt tnum">${amt}</div>
         ${!na?`<div class="amt2 tnum" style="color:#9a9183;font-size:11px">实际+预估 ${wan(c.af)}万</div>`:''}
-        ${c.yoy!=null?`<div class="yoy ${c.yoy>=0?'up':'down'}">同比 ${c.yoy>=0?'▲':'▼'} ${Math.abs(c.yoy).toFixed(1)}%</div>`:''}
+        ${c.yoy!=null&&state.showYoy?`<div class="yoy ${c.yoy>=0?'up':'down'}">同比 ${c.yoy>=0?'▲':'▼'} ${Math.abs(c.yoy).toFixed(1)}%</div>`:''}
       </div>
     </div>`;
   }).join('');
@@ -527,7 +648,7 @@ function renderAll(){
 
 /* ============ 初始化 & 事件 ============ */
 function init(){
-  document.getElementById('mVer').textContent = 'v1.0 渠道表现';
+  document.getElementById('mVer').textContent = 'v1.2 渠道表现 · 对比+趋势实线';
   // 默认：周期 day + 默认快捷
   const q=QUICK[state.period][state.quickIdx];
   const [s,e]=computeRange(q); state.start=s; state.end=e;
@@ -558,9 +679,24 @@ function init(){
     document.querySelectorAll('#quick button').forEach(x=>x.classList.remove('active')); renderAll(); });
   $('#dEnd').addEventListener('change',()=>{ state.end=$('#dEnd').value||MAXD;
     document.querySelectorAll('#quick button').forEach(x=>x.classList.remove('active')); renderAll(); });
+  // 对比周期 / 去年同期（v1.1 2026-08-05 新增）
+  $('#chkCompare').addEventListener('change',function(){
+    state.compareOn=this.checked; renderAll();
+  });
+  $('#cStart').addEventListener('change',function(){
+    state.cStart=this.value;
+    if(state.compareOn) renderAll();
+  });
+  $('#cEnd').addEventListener('change',function(){
+    state.cEnd=this.value;
+    if(state.compareOn) renderAll();
+  });
+  $('#chkYoy').addEventListener('change',function(){
+    state.showYoy=this.checked; renderAll();
+  });
   renderAll();
   document.getElementById('foot').textContent =
-    'ITO 电商渠道业绩看板 · 渠道表现（数据基于 dashboard_data.json 实时聚合，支持日/周/月筛选 + 渠道筛选） · 数据刷新时间：'+P.generated;
+    'ITO 电商渠道业绩看板 · 渠道表现（数据基于 dashboard_data.json 实时聚合，支持日/周/月筛选 + 渠道筛选 + 自定义对比周期） · v1.2（2026-08-05 趋势图新增对比期实际线）· 数据刷新时间：'+P.generated;
 }
 init();
 </script>
