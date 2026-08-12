@@ -9,7 +9,7 @@ import os, time, sys
 sys.stdout.reconfigure(encoding='utf-8')
 from datetime import datetime, timedelta
 
-BASE = r'E:\电商渠道业绩看板'
+BASE = r'D:\E盘文件\电商渠道业绩看板'
 TARGET_FILE = os.path.join(BASE, '各渠道月度目标数据.xlsx')
 
 # 只处理最近 N 天内有修改的文件（默认7天）

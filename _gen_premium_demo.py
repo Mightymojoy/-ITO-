@@ -6,7 +6,7 @@
 """
 import json, datetime, calendar
 
-BASE = "E:/电商渠道业绩看板/"
+BASE = "D:/E盘文件/电商渠道业绩看板/"
 with open(BASE + "dashboard_data.json", encoding="utf-8") as f:
     D = json.load(f)
 

@@ -2,7 +2,7 @@ import pandas as pd
 import json
 import os
 
-BASE = r'E:\电商渠道业绩看板'
+BASE = r'D:\E盘文件\电商渠道业绩看板'
 TARGET_FILE = os.path.join(BASE, '各渠道月度目标数据.xlsx')
 
 # ===== 读取所有sheet =====

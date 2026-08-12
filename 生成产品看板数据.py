@@ -2,7 +2,7 @@ import pandas as pd
 import json, os, re
 from collections import defaultdict
 
-BASE = r'E:\电商渠道业绩看板'
+BASE = r'D:\E盘文件\电商渠道业绩看板'
 DATA_SRC = os.path.join(BASE, '各渠道销售数据源')
 TARGET_FILE = os.path.join(BASE, '各渠道月度目标数据.xlsx')
 TIMESTAMP_FILE = os.path.join(BASE, '_cached_data', 'data_built.txt')

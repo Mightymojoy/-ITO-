@@ -3,7 +3,7 @@
 按现有匹配表格式规范生成补充行。先预览（--preview），确认后 --write 落盘。"""
 import pandas as pd, re, sys, os
 
-BASE = r'E:\电商渠道业绩看板'
+BASE = r'D:\E盘文件\电商渠道业绩看板'
 TARGET = os.path.join(BASE, '各渠道月度目标数据.xlsx')
 DATA = os.path.join(BASE, '各渠道销售数据源')
 KEY = ['直销_伊稻_电商_天猫ITO旗舰店','直销_乐绘_电商_京东ITO京东自营旗舰店','直销_伊稻_电商_抖音ITO旗舰店','直销_乐绘_电商_抖音ITO官方旗舰店','直销_伊远_电商_抖音ITO行李箱旗舰店','直销_伊稻_电商_小红书ITO旗舰店','直销_伊稻_电商_视频号ITO旗舰店']

@@ -5,7 +5,7 @@ import sys
 import io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-BASE = r'E:\电商渠道业绩看板'
+BASE = r'D:\E盘文件\电商渠道业绩看板'
 
 # 加载JSON数据
 with open(os.path.join(BASE, 'luggage_daily.json'), 'r', encoding='utf-8') as f:
