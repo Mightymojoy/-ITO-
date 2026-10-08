@@ -41,6 +41,10 @@ match.columns = ['货品名称', '系列', '颜色', '尺寸', '品类', '箱型
 
 product_attrs = {}
 series_to_short = {}
+# === 2026-10-08 新增：系列 -> 品类 映射 + 配件类判定（供兜底守卫用） ===
+series_cat = {}
+ACC_CATS = {'旅行箱配件', '行李牌', '包材辅料', '虚拟卡券', '赠品'}
+ACC_WORDS = ('箱套', '配件', '维修', '包材', '赠品')
 for _, row in match.iterrows():
     name = str(row.get('货品名称', '')).strip()
     series = str(row.get('系列', '')).strip()
@@ -56,6 +60,8 @@ for _, row in match.iterrows():
         product_attrs[name] = attrs
     if series and series not in series_to_short:
         series_to_short[series] = display
+    if series and series not in series_cat and cat and cat != 'nan':
+        series_cat[series] = cat
 
 all_series = sorted(set(s for s in match['系列'].dropna() if str(s).strip()))
 all_audiences = match['人群'].dropna().unique()
@@ -155,14 +161,24 @@ for fname in files:
         attrs = product_attrs.get(name)
         if attrs is None:
             fb = None
+            # === 2026-10-08 修复：兜底落点改为「前缀最长优先 + 配件守卫」 ===
+            # 原实现 for sn in all_series 取 sorted 后的第一个命中，导致短名（一代 / 主系列）抢先命中：
+            #   ① 二代归一代：MUSHROOM ORGANIZER 2 -> MUSHROOM ORGANIZER（同名系列其实存在于匹配表）
+            #   ② 配件归主系列：CLASSIC WAVE 箱套 -> CLASSIC WAVE（TPU箱套不该算行李箱销量）
+            # 改法：在「名称串以系列名开头」的候选里取最长；再对含配件词的名称做守卫。
             m = re.search(r'ITO\s+(.+?)(?:系列|$)', name)
             if m:
                 s = m.group(1).strip()
-                for sn in all_series:
-                    if sn in s or s in sn:
+                cands = [sn for sn in all_series if sn in s or s in sn]
+                if cands:
+                    pref = [sn for sn in cands if s.startswith(sn)]
+                    sn = max(pref, key=len) if pref else cands[0]
+                    # 配件守卫：名称串含配件词、但命中的是主产品系列 -> 放弃归该系列（不污染已命名系列）
+                    if any(w in s for w in ACC_WORDS) and series_cat.get(sn, '') not in ACC_CATS:
+                        sn = None
+                    if sn:
                         short = series_to_short.get(sn, sn)
                         fb = {'series': sn, 'display': short, 'cat': '', 'audience': '', 'color': '', 'size': ''}
-                        break
             if fb is None:
                 for key, val in product_attrs.items():
                     if key and name and (key in name or name in key):

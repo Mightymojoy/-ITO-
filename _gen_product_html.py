@@ -710,6 +710,7 @@ function initFilters(){
   document.getElementById('channelTags').innerHTML=
     `<button class="active" onclick="toggleAllChannels()">全部渠道</button>`+
     CHANNELS.map(ch=>`<button data-ch="${ch}" onclick="toggleCh('${ch}')">${ch}</button>`).join('');
+  if(window.syncCmpPeriod)window.syncCmpPeriod();
 }
 function setMetric(m){
   console.log('setMetric called: '+m);
@@ -760,6 +761,7 @@ function getVisChannels(){return selChannels.size?[...selChannels]:CHANNELS}
 function applyFilters(){
   startDate=document.getElementById('fdStart').value;
   endDate=document.getElementById('fdEnd').value;
+  if(window.syncCmpPeriod)window.syncCmpPeriod();
   document.querySelectorAll('.tab-content.active').forEach(el=>{
     if(el.id==='tab-luggage')renderLuggage();
     if(el.id==='tab-bag')renderBag();
@@ -1728,6 +1730,12 @@ COMPARE_CSS = '''/* 对比功能 */
 .compare-period{display:none;align-items:center;gap:4px;vertical-align:middle}
 .compare-period.visible{display:inline-flex}
 .compare-period input[type=date]{border:1px solid #d1d5db;border-radius:6px;padding:3px 8px;font-size:12px;width:115px}
+.cmp-lab{font-size:11px;color:#6b7280}
+.cmp-chip{padding:3px 9px;border:1px solid #e9e4da;border-radius:999px;background:#fff;color:#6b7280;font-size:11px;cursor:pointer;transition:all .15s;font-family:inherit;line-height:1.5}
+.cmp-chip:hover{border-color:#c9a962;color:#a8873f}
+.cmp-chip.active{background:#c9a962;border-color:#c9a962;color:#fff;font-weight:500}
+.cmp-warn{font-size:11px;color:#b0524c;margin-left:6px;display:none}
+.cmp-warn.show{display:inline}
 .compare-row{display:none;border-top:2px dashed #c9a962;margin-top:6px;padding-top:10px;margin-bottom:4px;position:relative}
 .compare-row.show{display:block}
 .compare-row::before{content:'\u5bf9\u6bd4\u5468\u671f';position:absolute;top:-8px;left:0;font-size:10px;color:#c9a962;background:#f3f4f6;padding:0 10px;font-weight:600;z-index:1}
@@ -1837,13 +1845,28 @@ function renderReturn(){
   });
   var rateAmt=rateShipAmt>0?(rateRetAmt/rateShipAmt*100):0;
   var rateQty=rateShipQty>0?(rateRetQty/rateShipQty*100):0;
+  // === 对比期（2026-10-08 新增）：KPI 卡同时给出「对应系列/品类」的对比期值 + 变化 ===
+  var _cmpOn=(typeof compareOn!=='undefined')&&compareOn&&cStart&&cEnd;
+  var _cmp=_cmpOn?retKpiAgg(cat,retD,shipD,chs,cStart,cEnd):null;
+  // mode='rel' → 相对变化(%)；mode='pp' → 绝对变化(百分点)
+  function kpiCmp(valHtml,curVal,prevVal,mode){
+    if(!_cmpOn){return '';}
+    var head='<div class="kpi-cmp">对比期（'+cStart+'~'+cEnd+'）';
+    if(prevVal===null||prevVal===undefined){return head+'无数据</div>';}
+    var d=curVal-prevVal, txt=null;
+    if(mode==='pp'){txt=(d>=0?'+':'')+d.toFixed(1)+'pp';}
+    else if(prevVal>0){txt=(d>=0?'+':'')+(d/prevVal*100).toFixed(1)+'%';}
+    var cls=d>0?'up':(d<0?'down':'');
+    var arrow=(txt===null||Math.abs(d)<1e-9)?'':(d>0?'▲ ':'▼ ');
+    return head+valHtml+(txt===null?'':' <span class="'+cls+'">'+arrow+txt+'</span>')+'</div>';
+  }
   renderReturnCompareRow('returnKpi',retD,chs,startDate,endDate,m);
   document.getElementById('returnKpi').innerHTML=
-    '<div class="kpi-card"><div class="label">退货金额</div><div class="value">'+fmtD(totalRet)+'</div></div>'+
-    '<div class="kpi-card"><div class="label">退货数量</div><div class="value">'+totalRetQty.toLocaleString()+'件</div></div>'+
-    '<div class="kpi-card"><div class="label">金额退货率</div><div class="value" style="color:'+(rateAmt>10?'#dc2626':'#059669')+'">'+rateAmt.toFixed(1)+'%</div><div class="sub">退货金额/发货金额</div></div>'+
-    '<div class="kpi-card"><div class="label">数量退货率</div><div class="value" style="color:'+(rateQty>10?'#dc2626':'#059669')+'">'+rateQty.toFixed(1)+'%</div><div class="sub">退货数量/发货数量</div></div>'+
-    '<div class="kpi-card" style="background:rgba(37,99,235,.04);border-color:rgba(37,99,235,.15)"><div class="label">当前维度</div><div class="value" style="color:#2563eb;font-size:16px">'+(m==='amt'?'按金额':'按数量')+'</div>';
+    '<div class="kpi-card"><div class="label">退货金额</div><div class="value">'+fmtD(totalRet)+'</div>'+kpiCmp(_cmp?fmtD(_cmp.amt):'—',totalRet,_cmp?_cmp.amt:null,'rel')+'</div>'+
+    '<div class="kpi-card"><div class="label">退货数量</div><div class="value">'+totalRetQty.toLocaleString()+'件</div>'+kpiCmp(_cmp?(_cmp.qty.toLocaleString()+'件'):'—',totalRetQty,_cmp?_cmp.qty:null,'rel')+'</div>'+
+    '<div class="kpi-card"><div class="label">金额退货率</div><div class="value" style="color:'+(rateAmt>10?'#dc2626':'#059669')+'">'+rateAmt.toFixed(1)+'%</div><div class="sub">退货金额/发货金额</div>'+kpiCmp(_cmp&&_cmp.rateAmt!==null?(_cmp.rateAmt.toFixed(1)+'%'):'—',rateAmt,_cmp?_cmp.rateAmt:null,'pp')+'</div>'+
+    '<div class="kpi-card"><div class="label">数量退货率</div><div class="value" style="color:'+(rateQty>10?'#dc2626':'#059669')+'">'+rateQty.toFixed(1)+'%</div><div class="sub">退货数量/发货数量</div>'+kpiCmp(_cmp&&_cmp.rateQty!==null?(_cmp.rateQty.toFixed(1)+'%'):'—',rateQty,_cmp?_cmp.rateQty:null,'pp')+'</div>'+
+    '<div class="kpi-card" style="background:rgba(37,99,235,.04);border-color:rgba(37,99,235,.15)"><div class="label">当前维度</div><div class="value" style="color:#2563eb;font-size:16px">'+(m==='amt'?'按金额':'按数量')+'</div>'+(_cmpOn?'<div class="kpi-cmp">对比期 '+cStart+' ~ '+cEnd+'</div>':'')+'</div>';
   // 趋势图（当期+去年同期联动 showYoy）
   var labels=[],retData=[],trendLabel=(m==='amt'?'退货金额':'退货数量');
   dates.forEach(function(d){
@@ -1928,6 +1951,14 @@ table.retmx tr.mx-total td{background:#eff6ff;font-weight:700;border-top:2px sol
 .mx-small{display:inline-block;font-size:9px;color:#9ca3af;border:1px solid #e5e7eb;border-radius:3px;padding:0 3px;margin-left:2px;vertical-align:1px}
 .mx-btn{font-size:11px;padding:3px 12px;border-radius:14px;border:1px solid #d1d5db;background:#fff;color:#6b7280;cursor:pointer}
 .mx-btn.on{background:#c9a962;border-color:#c9a962;color:#fff;font-weight:600}
+/* 对比期（2026-10-08 新增）：格内虚线下半＝对比期，同口径但降权显示 */
+.retmx-cmp{margin-top:3px;padding-top:2px;border-top:1px dashed rgba(128,118,102,.5)}
+.retmx-r2{font-size:11.5px;font-weight:600;line-height:1.3;opacity:.86}
+.retmx-n2{font-size:9.5px;line-height:1.3;opacity:.62}
+/* KPI 卡对比期副行 */
+.kpi-cmp{margin-top:5px;padding-top:4px;border-top:1px dashed #e9e4da;font-size:10px;color:#8a8378;line-height:1.55}
+.kpi-cmp .up{color:#dc2626;font-weight:600}
+.kpi-cmp .down{color:#059669;font-weight:600}
 '''
 
 RENDER_RET_MATRIX_FN = r'''
@@ -1935,6 +1966,40 @@ RENDER_RET_MATRIX_FN = r'''
 // 口径：退货率 = 退货 ÷ 发货（分母是发货，不是销售、也不是退货总量）。
 // 只对「行李箱 / 包袋」生效，与退货 tab 其余部分一致；未登记（无颜色或尺寸）单独兜底一行，保证能对账闭合。
 var retMxByAmt = false;
+// 对比期 KPI 汇总（2026-10-08 新增）：口径与退货 tab KPI 完全一致
+//   amt/qty   → 明细逐 SKU 累加（与「退货金额 / 退货数量」同口径）
+//   rateAmt/rateQty → 退货率（全档=行李箱+包袋；分母取 $total 全量）
+function retKpiAgg(cat,retD,shipD,chs,start,end){
+  var out={amt:0,qty:0,rateAmt:null,rateQty:null};
+  var dlist=getDatesInRange(start,end);
+  dlist.forEach(function(d){
+    if(!retD[d])return;
+    chs.forEach(function(ch){
+      var cd=retD[d][ch]; if(!cd)return;
+      Object.keys(cd).forEach(function(sk){
+        if(sk==='$total')return;
+        var v=cd[sk]; if(!v)return;
+        out.amt+=v.return_amt||0; out.qty+=v.return_qty||0;
+      });
+    });
+  });
+  var rs=(cat==='all')?[RET_LUG_DAILY,RET_BAG_DAILY]:[retD];
+  var ss=(cat==='all')?[SHIP_LUG_DAILY,SHIP_BAG_DAILY]:[shipD];
+  var ra=0,rq=0,sa=0,sq=0;
+  dlist.forEach(function(d){
+    rs.forEach(function(rd){
+      if(!rd[d])return;
+      chs.forEach(function(ch){var t=rd[d][ch]&&rd[d][ch]['$total'];if(t){ra+=t.return_amt||0;rq+=t.return_qty||0;}});
+    });
+    ss.forEach(function(sd){
+      if(!sd[d])return;
+      chs.forEach(function(ch){var t=sd[d][ch]&&sd[d][ch]['$total'];if(t){sa+=t.ship_amt||0;sq+=t.ship_qty||0;}});
+    });
+  });
+  out.rateAmt=sa>0?ra/sa*100:null;
+  out.rateQty=sq>0?rq/sq*100:null;
+  return out;
+}
 var _rsKeyIdx = null, _rsSerIdx = null;
 function _rsIdxMap(){
   if(!_rsKeyIdx){_rsKeyIdx={};for(var i=0;i<RS_KEYS.length;i++){_rsKeyIdx[RS_KEYS[i]]=i;}}
@@ -2053,6 +2118,9 @@ function renderRetMatrix(){
   if(!sel){box.style.display='none';box.innerHTML='';return;}
   // 2) 矩阵
   var md=retMatrixData(sel,chs,startDate,endDate,cat);
+  // 对比期矩阵（2026-10-08 新增）：同一套聚合函数跑 cStart~cEnd，保证两期口径逐字段一致
+  var cmpOn=(typeof compareOn!=='undefined')&&compareOn&&cStart&&cEnd;
+  var md2=cmpOn?retMatrixData(sel,chs,cStart,cEnd,cat):null;
   var useAmt=retMxByAmt;
   // 系列口径合计 = 明细 + 未登记（这样「系列总计」永远与系列层一致，不会出现明细为空时显示 0/0 的矛盾）
   var totNum=useAmt?(md.all.ra+md.unreg.ra):(md.all.rq+md.unreg.rq);
@@ -2075,17 +2143,41 @@ function renderRetMatrix(){
     return ((md.colorTot[b].sq||0)-(md.colorTot[a].sq||0))||((md.colorTot[b].sa||0)-(md.colorTot[a].sa||0))||(a<b?-1:1);
   });
   var sizes=Object.keys(md.sizeTot).sort(function(a,b){return _sizeOrder(a)-_sizeOrder(b);});
-  function cellHtml(c){
-    if(!c){return '<td class="mx-empty">—</td>';}
+  // 对比期格内块（2026-10-08 新增）：虚线下半＝对比期；无数据/无发货一律显示「—」，绝不显示 0%
+  function cmpBlock(o){
+    if(!cmpOn){return '';}
+    if(!o||((useAmt?o.sa:o.sq)<=0)){
+      var any=o&&(o.sq||o.sa||o.rq||o.ra);
+      return '<div class="retmx-cmp"><div class="retmx-r2">—</div><div class="retmx-n2">对比期'+(any?'无发货':'无数据')+'</div></div>';
+    }
+    var den=useAmt?o.sa:o.sq, num=useAmt?o.ra:o.rq, rate=num/den*100;
+    var sml=o.sq<MINSHIP;
+    return '<div class="retmx-cmp"><div class="retmx-r2">'+rate.toFixed(1)+'%'+(sml?'<span class="mx-small">样本小</span>':'')+'</div>'
+      +'<div class="retmx-n2">'+_shortNum(num)+'/'+_shortNum(den)+'</div></div>';
+  }
+  function cmpTitle(o){
+    if(!cmpOn){return '';}
+    var den=o?(useAmt?o.sa:o.sq):0, num=o?(useAmt?o.ra:o.rq):0;
+    if(den<=0){return ' ｜ 对比期：'+((o&&(o.sq||o.sa||o.rq||o.ra))?'无发货':'无数据');}
+    return ' ｜ 对比期：退货 '+_shortNum(num)+' / 发货 '+_shortNum(den)+'（'+o.sq+'件，'+(num/den*100).toFixed(1)+'%）';
+  }
+  function cellHtml(c,c2){
+    if(!c){
+      if(!cmpOn){return '<td class="mx-empty">—</td>';}
+      return '<td class="mx-empty" title="本期无此组合'+cmpTitle(c2)+'">—'+cmpBlock(c2)+'</td>';
+    }
     var den=useAmt?c.sa:c.sq, num=useAmt?c.ra:c.rq;
-    if(den<=0){return '<td class="mx-empty" title="无发货">—</td>';}
+    if(den<=0){
+      if(!cmpOn){return '<td class="mx-empty" title="无发货">—</td>';}
+      return '<td class="mx-empty" title="本期无发货'+cmpTitle(c2)+'">—'+cmpBlock(c2)+'</td>';
+    }
     var rate=num/den*100;
     var t=rate/anchor; if(t>1){t=1;}
     var abn=(rate>sRate*2)&&(c.sq>=MINSHIP);
     var sml=(!abn)&&(c.sq<MINSHIP);
-    return '<td style="background:'+_heatBg(t)+';color:'+_heatFg(t)+'" title="退货 '+_shortNum(num)+' / 发货 '+_shortNum(den)+'（'+c.sq+'件）">'
+    return '<td style="background:'+_heatBg(t)+';color:'+_heatFg(t)+'" title="本期：退货 '+_shortNum(num)+' / 发货 '+_shortNum(den)+'（'+c.sq+'件，'+rate.toFixed(1)+'%）'+cmpTitle(c2)+'">'
       +'<div class="retmx-r">'+rate.toFixed(1)+'%'+(abn?'<span class="mx-flag">异常</span>':(sml?'<span class="mx-small">样本小</span>':''))+'</div>'
-      +'<div class="retmx-n">'+_shortNum(num)+'/'+_shortNum(den)+'</div></td>';
+      +'<div class="retmx-n">'+_shortNum(num)+'/'+_shortNum(den)+'</div>'+cmpBlock(c2)+'</td>';
   }
   var th='<thead><tr><th class="rw">颜色 \\ 尺寸</th>';
   sizes.forEach(function(sz){th+='<th>'+escapeHtml(sz)+'</th>';});
@@ -2093,22 +2185,28 @@ function renderRetMatrix(){
   var rows='';
   colors.forEach(function(col){
     rows+='<tr><td class="mx-rowh" title="'+escapeHtml(col)+'">'+escapeHtml(col)+'</td>';
-    sizes.forEach(function(sz){rows+=cellHtml(md.cells[col][sz]);});
+    sizes.forEach(function(sz){
+      var c2=(md2&&md2.cells[col])?md2.cells[col][sz]:null;
+      rows+=cellHtml(md.cells[col][sz],c2);
+    });
     var ct=md.colorTot[col], cd=useAmt?ct.sa:ct.sq, cn=useAmt?ct.ra:ct.rq;
-    rows+='<td class="mx-sub">'+(cd>0?(cn/cd*100).toFixed(1)+'%':'—')+'<div class="retmx-n">'+_shortNum(cn)+'/'+_shortNum(cd)+'</div></td></tr>';
+    rows+='<td class="mx-sub">'+(cd>0?(cn/cd*100).toFixed(1)+'%':'—')+'<div class="retmx-n">'+_shortNum(cn)+'/'+_shortNum(cd)+'</div>'+cmpBlock(md2?md2.colorTot[col]:null)+'</td></tr>';
   });
   rows+='<tr class="mx-total"><td class="mx-rowh" style="background:#eff6ff">系列总计</td>';
   sizes.forEach(function(sz){
     var st=md.sizeTot[sz], d=useAmt?st.sa:st.sq, n=useAmt?st.ra:st.rq;
-    rows+='<td>'+(d>0?(n/d*100).toFixed(1)+'%':'—')+'<div class="retmx-n">'+_shortNum(n)+'/'+_shortNum(d)+'</div></td>';
+    rows+='<td>'+(d>0?(n/d*100).toFixed(1)+'%':'—')+'<div class="retmx-n">'+_shortNum(n)+'/'+_shortNum(d)+'</div>'+cmpBlock(md2?md2.sizeTot[sz]:null)+'</td>';
   });
-  rows+='<td>'+(totDen>0?sRate.toFixed(1)+'%':'—')+'<div class="retmx-n">'+_shortNum(totNum)+'/'+_shortNum(totDen)+'</div></td></tr>';
+  // 系列总计的对比期 = 明细 + 未登记（与本期同口径）
+  var totCmp=md2?{sq:md2.all.sq+md2.unreg.sq,sa:md2.all.sa+md2.unreg.sa,rq:md2.all.rq+md2.unreg.rq,ra:md2.all.ra+md2.unreg.ra}:null;
+  rows+='<td>'+(totDen>0?sRate.toFixed(1)+'%':'—')+'<div class="retmx-n">'+_shortNum(totNum)+'/'+_shortNum(totDen)+'</div>'+cmpBlock(totCmp)+'</td></tr>';
   var unregRow='';
-  if(md.unreg.sq||md.unreg.sa||md.unreg.rq||md.unreg.ra){
+  var u2=md2?md2.unreg:null;
+  if(md.unreg.sq||md.unreg.sa||md.unreg.rq||md.unreg.ra||(u2&&(u2.sq||u2.sa||u2.rq||u2.ra))){
     var ud=useAmt?md.unreg.sa:md.unreg.sq, un=useAmt?md.unreg.ra:md.unreg.rq;
     unregRow='<tr><td class="mx-rowh" style="color:#b0524c">未登记<div class="retmx-n">无颜色或尺寸</div></td>'
-      +'<td colspan="'+Math.max(sizes.length,1)+'" style="background:#fdf6f5">'+(ud>0?(un/ud*100).toFixed(1)+'%':'—')+'<div class="retmx-n">'+_shortNum(un)+'/'+_shortNum(ud)+'</div></td>'
-      +'<td class="mx-sub">'+(ud>0?(un/ud*100).toFixed(1)+'%':'—')+'</td></tr>';
+      +'<td colspan="'+Math.max(sizes.length,1)+'" style="background:#fdf6f5">'+(ud>0?(un/ud*100).toFixed(1)+'%':'—')+'<div class="retmx-n">'+_shortNum(un)+'/'+_shortNum(ud)+'</div>'+cmpBlock(u2)+'</td>'
+      +'<td class="mx-sub">'+(ud>0?(un/ud*100).toFixed(1)+'%':'—')+cmpBlock(u2)+'</td></tr>';
   }
   // 3) 页内对账：矩阵（含未登记）vs 系列层，必须闭合
   var lvQty=0, lvShip=0;
@@ -2123,14 +2221,31 @@ function renderRetMatrix(){
   });
   var mxQty=md.all.rq+md.unreg.rq, mxShip=md.all.sq+md.unreg.sq;
   var ok=(mxQty===lvQty);
-  var checkTxt='<b>对账：</b>矩阵退货 '+mxQty+' 件（明细 '+md.all.rq+' ＋ 未登记 '+md.unreg.rq+'）vs 系列层退货 '+lvQty+' 件 → 差额 <b style="color:'+(ok?'#059669':'#dc2626')+'">'+(mxQty-lvQty)+'</b>'
+  var closed=ok&&(mxShip===lvShip);
+  var checkTxt='<b>对账（本期 '+startDate+'~'+endDate+'）：</b>矩阵退货 '+mxQty+' 件（明细 '+md.all.rq+' ＋ 未登记 '+md.unreg.rq+'）vs 系列层退货 '+lvQty+' 件 → 差额 <b style="color:'+(ok?'#059669':'#dc2626')+'">'+(mxQty-lvQty)+'</b>'
     +'　｜　发货 矩阵 '+mxShip+' vs 系列层 '+lvShip+' → 差额 <b style="color:'+(mxShip===lvShip?'#059669':'#dc2626')+'">'+(mxShip-lvShip)+'</b>'
-    +(ok&&mxShip===lvShip?'　·　已闭合':'　·　请核查');
+    +(closed?'　·　已闭合':'　·　请核查');
+  // 对比期对账（2026-10-08 新增）：两期都必须闭合，任一不闭合即说明两期口径不一致
+  if(cmpOn&&md2){
+    var lvQty2=0,lvShip2=0;
+    getDatesInRange(cStart,cEnd).forEach(function(d){
+      chs.forEach(function(ch){
+        rLayers.forEach(function(src){var sv=src[d]&&src[d][ch]&&src[d][ch][sel];if(sv){lvQty2+=sv.return_qty||0;}});
+        sLayers.forEach(function(src){var sv=src[d]&&src[d][ch]&&src[d][ch][sel];if(sv){lvShip2+=sv.ship_qty||0;}});
+      });
+    });
+    var mxQty2=md2.all.rq+md2.unreg.rq, mxShip2=md2.all.sq+md2.unreg.sq;
+    var ok2=(mxQty2===lvQty2)&&(mxShip2===lvShip2);
+    closed=closed&&ok2;
+    checkTxt+='<div style="margin-top:5px;padding-top:5px;border-top:1px dashed #d1d5db"><b>对账（对比期 '+cStart+'~'+cEnd+'）：</b>矩阵退货 '+mxQty2+' 件（明细 '+md2.all.rq+' ＋ 未登记 '+md2.unreg.rq+'）vs 系列层 '+lvQty2+' 件 → 差额 <b style="color:'+(mxQty2===lvQty2?'#059669':'#dc2626')+'">'+(mxQty2-lvQty2)+'</b>'
+      +'　｜　发货 矩阵 '+mxShip2+' vs 系列层 '+lvShip2+' → 差额 <b style="color:'+(mxShip2===lvShip2?'#059669':'#dc2626')+'">'+(mxShip2-lvShip2)+'</b>'
+      +(ok2?'　·　已闭合':'　·　请核查')+'</div>';
+  }
   box.style.display='';
   box.innerHTML='<div class="retmx-wrap">'
     +'<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">'
     +'<div><h3>'+escapeHtml(sel)+' · SKU 退货率矩阵</h3>'
-    +'<div class="retmx-note">格内上行＝退货率（'+(useAmt?'退货金额 ÷ 发货金额':'退货数量 ÷ 发货数量')+'）；下行＝退货/发货。<br>'
+    +'<div class="retmx-note">'+((cmpOn)?'格内<b style="color:#a8873f">虚线上＝本期（'+startDate+' ~ '+endDate+'）</b>、<b style="color:#a8873f">虚线下＝对比期（'+cStart+' ~ '+cEnd+'）</b>，两期同口径；':'格内')+'上行＝退货率（'+(useAmt?'退货金额 ÷ 发货金额':'退货数量 ÷ 发货数量')+'）；下行＝退货/发货。<br>'
     +'底色越深＝退货率越高（锚点＝矩阵内最高 '+anchorRate.toFixed(1)+'%，本系列整体 '+sRate.toFixed(1)+'%）。'
     +'「异常」＝率高于整体 2 倍且发货 ≥'+MINSHIP+' 件；「样本小」＝发货 &lt;'+MINSHIP+' 件，率不可信需谨慎。'
     +'日期与渠道跟随页面顶部筛选。</div></div>'
@@ -2139,24 +2254,106 @@ function renderRetMatrix(){
     +'<button class="mx-btn'+(useAmt?' on':'')+'" onclick="setRetMxMetric(true)">金额率</button>'
     +'</div></div>'
     +'<div class="retmx-scroll"><table class="retmx">'+th+'<tbody>'+rows+unregRow+'</tbody></table></div>'
-    +'<div style="margin-top:10px;padding:8px 12px;border-radius:6px;background:'+(ok&&mxShip===lvShip?'#f0fdf4':'#fef2f2')+';font-size:11px;color:#374151">'+checkTxt+'</div>'
+    +'<div style="margin-top:10px;padding:8px 12px;border-radius:6px;background:'+(closed?'#f0fdf4':'#fef2f2')+';font-size:11px;color:#374151">'+checkTxt+'</div>'
     +'</div>';
 }
 '''
 
 COMPARE_EVENTS = '''
-document.getElementById('compareToggle').addEventListener('click',function(){
-  compareOn=!compareOn;this.classList.toggle('active');
-  document.getElementById('comparePeriod').classList.toggle('visible');
-  renderCurrentTab();
-});
-document.getElementById('compareStart').addEventListener('change',function(){cStart=this.value;if(compareOn)renderCurrentTab();});
-document.getElementById('compareEnd').addEventListener('change',function(){cEnd=this.value;if(compareOn)renderCurrentTab();});
+/* ===== 对比期引擎（2026-10-08 v2：全自定义 + 自动跟随，不再写死任何日期）=====
+   · 自动（默认）：对比期 = 本期区间「前一个等长周期」，口径与主看板 KPI 的「对比上一周期」完全一致，
+                   主筛选日期变化时自动重算 —— 页面里不存在任何硬编码日期；
+   · 手动：改过日期输入框或点过快捷按钮后自动锁定，主筛选变化不再覆盖（尊重用户手选）；
+           点「自动」即复位为跟随。
+   注入位置说明：本段被注入到 4 处（switchTab / renderCurrentTab / applyFilters / 顶层），
+   因此事件一律用 onclick / onchange「赋值」而不是 addEventListener，重复执行只覆盖、不累积。 */
+function cmpParseD(s){var a=String(s||'').split('-');if(a.length!==3)return null;var d=new Date(+a[0],+a[1]-1,+a[2]);return isNaN(d)?null:d;}
+function cmpFmtD(d){var m=d.getMonth()+1,dd=d.getDate();return d.getFullYear()+'-'+(m<10?'0':'')+m+'-'+(dd<10?'0':'')+dd;}
+function cmpAutoCalc(){
+  var s=startDate,e=endDate;
+  if(typeof getPrevPeriod==='function'&&s&&e){var v=getPrevPeriod(s,e);if(v&&v.start&&v.end)return {start:v.start,end:v.end};}
+  var n=new Date(),ps=new Date(n.getFullYear(),n.getMonth()-1,1),pe=new Date(n.getFullYear(),n.getMonth(),0);
+  return {start:cmpFmtD(ps),end:cmpFmtD(pe)};
+}
+function cmpWarn(){
+  var w=document.getElementById('cmpWarn');if(!w)return;
+  var s=cmpParseD(cStart),e=cmpParseD(cEnd);
+  if(!s||!e){w.textContent='对比期未设定';w.classList.add('show');return;}
+  if(s>e){w.textContent='对比期起止颠倒';w.classList.add('show');return;}
+  w.classList.remove('show');
+}
+function cmpWrite(v){
+  cStart=v.start;cEnd=v.end;
+  var a=document.getElementById('compareStart'),b=document.getElementById('compareEnd');
+  if(a)a.value=cStart;if(b)b.value=cEnd;
+  cmpWarn();
+}
+function cmpPaint(){
+  var b=document.getElementById('cmpAutoBtn');if(!b)return;
+  b.classList.toggle('active',cmpAuto);
+  b.title=cmpAuto?'当前为「自动」：对比期＝本期区间的前一个等长周期，随日期筛选自动更新':'当前为「手动」：对比期已锁定，不随日期筛选变化；点此恢复自动跟随';
+  var t=document.getElementById('cmpModeTxt');
+  if(t){t.textContent=cmpAuto?'·自动':'·手动';t.style.display='inline';t.style.color=cmpAuto?'#9ca3af':'#a8873f';}
+}
+function cmpAutoSync(){ if(!cmpAuto)return; cmpWrite(cmpAutoCalc()); cmpPaint(); }
+function cmpManual(s,e){
+  cmpAuto=false;
+  if(s!==null&&s!==undefined)cStart=s;
+  if(e!==null&&e!==undefined)cEnd=e;
+  cmpWarn();cmpPaint();
+  if(compareOn)renderCurrentTab();
+}
+function cmpMonthOffset(k){
+  var s=cmpParseD(startDate)||new Date(),e=cmpParseD(endDate)||new Date();
+  return {start:cmpFmtD(new Date(s.getFullYear(),s.getMonth()+k,1)),end:cmpFmtD(new Date(e.getFullYear(),e.getMonth()+k+1,0))};
+}
+function cmpQuickAuto(){cmpAuto=true;cmpAutoSync();if(compareOn)renderCurrentTab();}
+function cmpQuickPrev(){
+  var v=(typeof getPrevPeriod==='function'&&startDate&&endDate)?getPrevPeriod(startDate,endDate):cmpMonthOffset(-1);
+  cmpManual(v.start,v.end);
+}
+function cmpQuickLastMonth(){var v=cmpMonthOffset(-1);cmpManual(v.start,v.end);}
+function cmpQuickYoy(){
+  var v=(typeof getYoYPeriod==='function'&&startDate&&endDate)?getYoYPeriod(startDate,endDate):null;
+  if(!v){var s=cmpParseD(startDate)||new Date(),e=cmpParseD(endDate)||new Date();
+    v={start:cmpFmtD(new Date(s.getFullYear()-1,s.getMonth(),s.getDate())),end:cmpFmtD(new Date(e.getFullYear()-1,e.getMonth(),e.getDate()))};}
+  cmpManual(v.start,v.end);
+}
+window.syncCmpPeriod=cmpAutoSync;
+(function(){
+  var _ct=document.getElementById('compareToggle');
+  if(_ct){
+    _ct.onclick=function(){
+      compareOn=!compareOn;this.classList.toggle('active');
+      document.getElementById('comparePeriod').classList.toggle('visible');
+      if(compareOn)cmpAutoSync();
+      renderCurrentTab();
+    };
+  }
+  var _cs=document.getElementById('compareStart');
+  if(_cs){_cs.onchange=function(){cmpManual(this.value,null);};}
+  var _ce=document.getElementById('compareEnd');
+  if(_ce){_ce.onchange=function(){cmpManual(null,this.value);};}
+  cmpPaint();cmpAutoSync();
+})();
 '''
 
 html = html.replace('.val-qty{color:#2563eb}', '.val-qty{color:#2563eb}\n' + COMPARE_CSS)
-html = html.replace('let showYoy=false;', 'let showYoy=false;\nlet compareOn=false,cStart="2026-06-01",cEnd="2026-06-30";')
-compare_btn = '<button class="compare-btn" id="compareToggle"><i data-lucide="git-compare" style="width:14px;height:14px;display:none"></i>\u5bf9\u6bd4</button><div class="compare-period" id="comparePeriod"><span style="font-size:11px;color:#6b7280">\u5bf9\u6bd4</span><input type="date" id="compareStart" value="2026-06-01"><span style="font-size:11px;color:#6b7280">\u81f3</span><input type="date" id="compareEnd" value="2026-06-30"></div>'
+html = html.replace('let showYoy=false;', 'let showYoy=false;\nlet compareOn=false,cStart="",cEnd="";\nlet cmpAuto=true;')
+compare_btn = ('<button class="compare-btn" id="compareToggle">'
+  '<i data-lucide="git-compare" style="width:14px;height:14px;display:none"></i>\u5bf9\u6bd4</button>'
+  '<div class="compare-period" id="comparePeriod">'
+  '<span class="cmp-lab">\u5bf9\u6bd4\u671f</span>'
+  '<span class="cmp-lab" id="cmpModeTxt" style="display:none"></span>'
+  '<input type="date" id="compareStart">'
+  '<span class="cmp-lab">\u81f3</span>'
+  '<input type="date" id="compareEnd">'
+  '<button class="cmp-chip" id="cmpAutoBtn" onclick="cmpQuickAuto()">\u81ea\u52a8</button>'
+  '<button class="cmp-chip" onclick="cmpQuickPrev()">\u4e0a\u4e00\u5468\u671f</button>'
+  '<button class="cmp-chip" onclick="cmpQuickLastMonth()">\u4e0a\u6708</button>'
+  '<button class="cmp-chip" onclick="cmpQuickYoy()">\u540c\u671f\u53bb\u5e74</button>'
+  '<span class="cmp-warn" id="cmpWarn"></span>'
+  '</div>')
 html = html.replace('<input type="checkbox" id="chkYoy"', compare_btn + '\n    <input type="checkbox" id="chkYoy"')
 html = html.replace('function toggleCh(', RENDER_COMPARE_ROW_FN + '\nfunction toggleCh(')
 html = html.replace("document.getElementById('lugKpi').innerHTML=", "  renderCompareRow('lugKpi',LUG_DAILY,ch,startDate,endDate,metric);\n  document.getElementById('lugKpi').innerHTML=")
