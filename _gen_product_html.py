@@ -1953,7 +1953,9 @@ RET_MATRIX_CSS = r'''
 table.retmx{border-collapse:separate;border-spacing:2px;font-size:11px;width:100%}
 table.retmx th{background:#f3f4f6;color:#374151;font-weight:600;padding:6px 8px;text-align:center;white-space:nowrap;font-size:11px;border-radius:4px}
 table.retmx th.rw{text-align:left;background:#f9fafb}
-table.retmx td{text-align:center;padding:5px 6px;border-radius:4px;white-space:nowrap;vertical-align:middle;color:#3f3a33}
+/* 窄列保护（2026-10-08 v2）：基期对照组的中间栏居中 + 右侧胶囊定宽 56px，列宽不足时二者会相压
+   （实测 P2-TRUNK 最窄列 157.1px 时重叠 2px）→ 兜底最小列宽，仍不足则由 .retmx-scroll 横向滚动。 */
+table.retmx td{text-align:center;padding:5px 6px;border-radius:4px;white-space:nowrap;vertical-align:middle;color:#3f3a33;min-width:168px}
 table.retmx td.mx-rowh{text-align:left;font-weight:600;background:#f9fafb;color:#374151;max-width:190px}
 table.retmx td.mx-empty{color:#d1d5db;background:#fafafa}
 table.retmx td.mx-sub{background:#f3f4f6;font-weight:700;color:#374151}
@@ -1964,16 +1966,18 @@ table.retmx tr.mx-total td{background:#eff6ff;font-weight:700;border-top:2px sol
 .mx-small{display:inline-block;font-size:9px;color:#9ca3af;border:1px solid #e5e7eb;border-radius:3px;padding:0 3px;margin-left:2px;vertical-align:1px}
 .mx-btn{font-size:11px;padding:3px 12px;border-radius:14px;border:1px solid #d1d5db;background:#fff;color:#6b7280;cursor:pointer}
 .mx-btn.on{background:#c9a962;border-color:#c9a962;color:#fff;font-weight:600}
-/* 对比期（2026-10-08 新增）：格内虚线下半＝对比期，同口径但降权显示 */
-.retmx-cmp{margin-top:3px;padding-top:2px;border-top:1px dashed rgba(128,118,102,.5)}
-.retmx-r2{font-size:11.5px;font-weight:600;line-height:1.3;opacity:.86}
-.retmx-n2{font-size:9.5px;line-height:1.3;opacity:.62}
-/* 格内「同环比」两行（2026-10-08 新增）：虚线以下＝环比（上一等长周期）与同比（去年同期）的率变化（百分点）。
-   涨跌用 .up/.down（全站涨红跌绿），但格子自身有热力底色，故改用自带上底的小胶囊，保证在深色底上也可读。 */
-.retmx-d{margin-top:3px;padding-top:3px;border-top:1px dashed rgba(128,118,102,.5);display:flex;flex-direction:column;gap:2px}
-.retmx-dl{display:flex;justify-content:space-between;align-items:center;gap:4px;font-size:9.5px;line-height:1.35}
-.retmx-dk{opacity:.75}
-.retmx-dv{font-weight:700;border-radius:3px;padding:0 3px;white-space:nowrap;font-variant-numeric:tabular-nums}
+/* 格内「基期对照」组（2026-10-08 v2）：虚线以下＝环比（或对比期）与同比各占一组。
+   组内三栏：左标签与右胶囊各自绝对定位（胶囊定宽 56px，保证两组胶囊左右边缘严格对齐），
+   中间栏「基期退货率 + 基期退货/发货」上下两行用 margin:0 auto 居中 —— 中心恒等于格子中心，
+   与上方 text-align:center 的本期退货率严格同轴（照老大给的参考图）。
+   涨跌用 .up/.down（全站涨红跌绿），但格子自身有热力底色，故改用自带上底的小胶囊，深色底也可读。 */
+.retmx-d{margin-top:3px;padding-top:3px;border-top:1px dashed rgba(128,118,102,.5);display:flex;flex-direction:column;gap:3px}
+.retmx-dg{position:relative;display:flex;align-items:center;min-height:28px;font-size:9.5px;line-height:1.3}
+.retmx-dk{position:absolute;left:0;top:50%;transform:translateY(-50%);opacity:.75;white-space:nowrap}
+.retmx-dm{margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:1px}
+.retmx-dr{font-size:11px;font-weight:600;opacity:.88;font-variant-numeric:tabular-nums;white-space:nowrap}
+.retmx-dn{font-size:9.5px;opacity:.6;font-variant-numeric:tabular-nums;white-space:nowrap}
+.retmx-dv{position:absolute;right:0;top:50%;transform:translateY(-50%);width:56px;text-align:center;font-weight:700;border-radius:3px;padding:0 3px;white-space:nowrap;font-variant-numeric:tabular-nums}
 .retmx-dv.up{background:rgba(176,82,76,.92);color:#fff}
 .retmx-dv.down{background:rgba(95,127,90,.92);color:#fff}
 .retmx-dv.flat{background:rgba(120,113,108,.16);color:inherit;font-weight:600}
@@ -2175,30 +2179,46 @@ function renderRetMatrix(){
     return ((md.colorTot[b].sq||0)-(md.colorTot[a].sq||0))||((md.colorTot[b].sa||0)-(md.colorTot[a].sa||0))||(a<b?-1:1);
   });
   var sizes=Object.keys(md.sizeTot).sort(function(a,b){return _sizeOrder(a)-_sizeOrder(b);});
-  /* 格内「同环比」块（2026-10-08 改版）：
-     虚线以下两行＝环比（或对比期）与同比的「率变化」，单位百分点。
-     基期无发货/无数据一律显示「—」，绝不显示 0%；|Δ|<0.05 视为持平，显示 0.0pp 且不带箭头。 */
-  function _dPP(curRate,o){
-    if(curRate===null||curRate===undefined){return null;}
+  /* 格内「基期对照」组（2026-10-08 v2）：
+     虚线以下每个基期占一组＝左标签 ＋「基期率／基期明细」两行（居中，与上方本期同轴）＋ 右侧率变化（pp）。
+     基期无发货/无数据一律显示「—」，绝不显示 0%；|Δ|<0.05 视为持平，显示 0.0pp 且不带箭头。
+     注意：本期无数据（curRate=null）时，基期率与明细照常展示，只有率变化显示「—」。 */
+  function _bRate(o){
     if(!o){return null;}
     var den=useAmt?o.sa:o.sq;
     if(den<=0){return null;}
-    var num=useAmt?o.ra:o.rq;
-    return curRate-num/den*100;
+    return (useAmt?o.ra:o.rq)/den*100;
+  }
+  function _bAmtHtml(o){
+    if(!o){return '<span class="retmx-dr">—</span><span class="retmx-dn">无数据</span>';}
+    var den=useAmt?o.sa:o.sq, num=useAmt?o.ra:o.rq;
+    if(den<=0){
+      return '<span class="retmx-dr">—</span><span class="retmx-dn">'
+        +((o.sq||o.sa||o.rq||o.ra)?'无发货':'无数据')+'</span>';
+    }
+    return '<span class="retmx-dr">'+(num/den*100).toFixed(1)+'%</span>'
+      +'<span class="retmx-dn">'+_shortNum(num)+'/'+_shortNum(den)+'</span>';
+  }
+  function _dPP(curRate,o){
+    if(curRate===null||curRate===undefined){return null;}
+    var br=_bRate(o);
+    return br===null?null:(curRate-br);
   }
   function _dHtml(curRate,o){
     var d=_dPP(curRate,o);
-    if(d===null){return '<span class="retmx-dv flat" title="基期无数据">—</span>';}
+    if(d===null){return '<span class="retmx-dv flat" title="基期无数据或缺本期值">—</span>';}
     if(Math.abs(d)<0.05){return '<span class="retmx-dv flat">0.0pp</span>';}
     var cls=d>0?'up':'down';
     return '<span class="retmx-dv '+cls+'">'+(d>0?'▲+':'▼-')+Math.abs(d).toFixed(1)+'pp</span>';
   }
+  function _dGroup(curRate,o,label){
+    return '<div class="retmx-dg"><span class="retmx-dk">'+label+'</span>'
+      +'<span class="retmx-dm">'+_bAmtHtml(o)+'</span>'
+      +_dHtml(curRate,o)+'</div>';
+  }
   function dBlock(curRate,o,oY){
     if(!cmpOn){return '';}
-    return '<div class="retmx-d">'
-      +'<div class="retmx-dl"><span class="retmx-dk">'+cmpTag+'</span>'+_dHtml(curRate,o)+'</div>'
-      +'<div class="retmx-dl"><span class="retmx-dk">同比</span>'+_dHtml(curRate,oY)+'</div>'
-      +'</div>';
+    return '<div class="retmx-d">'+_dGroup(curRate,o,cmpTag)+_dGroup(curRate,oY,'同比')+'</div>';
   }
   function cmpTitle(o,oY){
     if(!cmpOn){return '';}
@@ -2302,10 +2322,10 @@ function renderRetMatrix(){
   box.innerHTML='<div class="retmx-wrap">'
     +'<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">'
     +'<div><h3>'+escapeHtml(sel)+' · SKU 退货率矩阵</h3>'
-    +'<div class="retmx-note">'+((cmpOn)?'格内<b style="color:#a8873f">虚线上＝本期（'+startDate+' ~ '+endDate+'）</b>：上行退货率、下行退货/发货；<b style="color:#a8873f">虚线下＝'+cmpTag+'（'+cStart+' ~ '+cEnd+'）／同比（'+yoyStart+' ~ '+yoyEnd+'）</b>的率变化，单位百分点，涨红跌绿，持平显示 0.0pp（基期无发货显示「—」）；':'格内')+'上行＝退货率（'+(useAmt?'退货金额 ÷ 发货金额':'退货数量 ÷ 发货数量')+'）；下行＝退货/发货。<br>'
+    +'<div class="retmx-note">'+((cmpOn)?'格内<b style="color:#a8873f">虚线上＝本期（'+startDate+' ~ '+endDate+'）</b>：上行退货率、下行退货/发货；<b style="color:#a8873f">虚线下＝'+cmpTag+'（'+cStart+' ~ '+cEnd+'）／同比（'+yoyStart+' ~ '+yoyEnd+'）</b>：每组中间两行为该基期的退货率与退货/发货（与本期同轴），右侧胶囊为该基期到本期的率变化（单位百分点，涨红跌绿，持平显示 0.0pp，基期无发货显示「—」）；':'格内')+'上行＝退货率（'+(useAmt?'退货金额 ÷ 发货金额':'退货数量 ÷ 发货数量')+'）；下行＝退货/发货。<br>'
     +'底色越深＝退货率越高（锚点＝矩阵内最高 '+anchorRate.toFixed(1)+'%，本系列整体 '+sRate.toFixed(1)+'%）。'
     +'「异常」＝率高于整体 2 倍且发货 ≥'+MINSHIP+' 件；「样本小」＝发货 &lt;'+MINSHIP+' 件，率不可信需谨慎。'
-    +'日期与渠道跟随页面顶部筛选，鼠标悬停格内可见基期完整明细。</div></div>'
+    +'日期与渠道跟随页面顶部筛选，鼠标悬停格内可见本期与各基期的完整明细。</div></div>'
     +'<div style="display:flex;gap:6px">'
     +'<button class="mx-btn'+(useAmt?'':' on')+'" onclick="setRetMxMetric(false)">数量率</button>'
     +'<button class="mx-btn'+(useAmt?' on':'')+'" onclick="setRetMxMetric(true)">金额率</button>'
