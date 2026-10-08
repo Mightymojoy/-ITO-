@@ -43,6 +43,13 @@ with open(os.path.join(BASE, 'luggage_return_daily.json'), 'r', encoding='utf-8'
     ret_lug_data = json.load(f)
 with open(os.path.join(BASE, 'bag_return_daily.json'), 'r', encoding='utf-8') as f:
     ret_bag_data = json.load(f)
+# ===== 发货数据（2026-08-31 新增，退货率分母） =====
+with open(os.path.join(BASE, 'ship_daily.json'), 'r', encoding='utf-8') as f:
+    ship_all_data = json.load(f)
+with open(os.path.join(BASE, 'luggage_ship_daily.json'), 'r', encoding='utf-8') as f:
+    ship_lug_data = json.load(f)
+with open(os.path.join(BASE, 'bag_ship_daily.json'), 'r', encoding='utf-8') as f:
+    ship_bag_data = json.load(f)
 
 # ===== SKU数据：从sku_daily.json压缩为紧凑格式 =====
 print('  处理SKU数据...')
@@ -149,6 +156,91 @@ bag_size_json_str = json.dumps(bag_size_data['daily'], ensure_ascii=False)
 ret_all_json_str = json.dumps(ret_all_data['daily'], ensure_ascii=False)
 ret_lug_json_str = json.dumps(ret_lug_data['daily'], ensure_ascii=False)
 ret_bag_json_str = json.dumps(ret_bag_data['daily'], ensure_ascii=False)
+# === 发货JSON（2026-08-31 新增，退货率分母） ===
+ship_all_json_str = json.dumps(ship_all_data['daily'], ensure_ascii=False)
+ship_lug_json_str = json.dumps(ship_lug_data['daily'], ensure_ascii=False)
+ship_bag_json_str = json.dumps(ship_bag_data['daily'], ensure_ascii=False)
+
+# === SKU 级 退货/发货（2026-09-24 新增，退货率矩阵） ===
+# 索引化压缩：sku_key -> 数组下标，配合 separators 去掉 JSON 空格，控制产物体积。
+print('  处理 SKU 退货/发货数据...')
+with open(os.path.join(BASE, 'sku_ret_ship_daily.json'), 'r', encoding='utf-8') as f:
+    raw_rs = json.load(f)
+RS_KEYS = raw_rs['meta']['sku_keys']
+RS_IDX = {k: i for i, k in enumerate(RS_KEYS)}
+# 防御性兜底：系列索引 = SKU 桶系列 ∪ 未登记桶系列（未登记系列没有 SKU 键，不在 meta.series 里）
+_rs_series_all = set(raw_rs['meta']['series'])
+for _k in ('unreg_lug', 'unreg_bag'):
+    for _day in raw_rs.get(_k, {}).values():
+        for _sers in _day.values():
+            _rs_series_all.update(_sers.keys())
+RS_SERIES = sorted(_rs_series_all)
+RS_SERIES_IDX = {s: i for i, s in enumerate(RS_SERIES)}
+
+
+def _rs_row(v):
+    sq = v.get('sq', 0) or 0
+    sa = v.get('sa', 0) or 0
+    rq = v.get('rq', 0) or 0
+    ra = v.get('ra', 0) or 0
+    if not (sq or sa or rq or ra):
+        return None
+    return [sq, round(sa, 2), rq, round(ra, 2)]
+
+
+rs_daily_c = {}
+for _date, _chans in raw_rs['daily'].items():
+    _day = {}
+    for _ch, _skus in _chans.items():
+        if _ch == '$total':
+            continue
+        _arr = []
+        for _k, _v in _skus.items():
+            _i = RS_IDX.get(_k)
+            if _i is None:
+                continue
+            _r = _rs_row(_v)
+            if _r is None:
+                continue
+            _arr.append([_i] + _r)
+        if _arr:
+            _day[_ch] = _arr
+    if _day:
+        rs_daily_c[_date] = _day
+
+
+def _rs_unreg(src):
+    out = {}
+    for _date, _chans in src.items():
+        _day = {}
+        for _ch, _sers in _chans.items():
+            _arr = []
+            for _s, _v in _sers.items():
+                _i = RS_SERIES_IDX.get(_s)
+                if _i is None:
+                    continue
+                _r = _rs_row(_v)
+                if _r is None:
+                    continue
+                _arr.append([_i] + _r)
+            if _arr:
+                _day[_ch] = _arr
+        if _day:
+            out[_date] = _day
+    return out
+
+
+rs_unreg_lug_c = _rs_unreg(raw_rs.get('unreg_lug', {}))
+rs_unreg_bag_c = _rs_unreg(raw_rs.get('unreg_bag', {}))
+_J = lambda o: json.dumps(o, ensure_ascii=False, separators=(',', ':'))
+rs_keys_json = _J(RS_KEYS)
+rs_series_json = _J(RS_SERIES)
+rs_daily_json = _J(rs_daily_c)
+rs_unreg_lug_json = _J(rs_unreg_lug_c)
+rs_unreg_bag_json = _J(rs_unreg_bag_c)
+print('  SKU退货/发货压缩: %d天, sku键 %d, 未登记(箱/袋) %d/%d天, 体积 %.1fMB'
+      % (len(rs_daily_c), len(RS_KEYS), len(rs_unreg_lug_c), len(rs_unreg_bag_c),
+         (len(rs_daily_json) + len(rs_unreg_lug_json) + len(rs_unreg_bag_json)) / 1024 / 1024))
 
 LUG_META = json.dumps(luggage['meta'], ensure_ascii=False)
 BAG_META = json.dumps(bag['meta'], ensure_ascii=False)
@@ -375,8 +467,14 @@ tr.summary td{font-weight:700;background:#eff6ff;border-top:2px solid #2563eb}
     <select id="returnCat" onchange="renderReturn()" style="border:1px solid #d1d5db;border-radius:6px;padding:5px 10px;font-size:13px;background:#fff">
       <option value="all">全部</option><option value="luggage">行李箱</option><option value="bag">包袋</option>
     </select>
+    <label style="font-size:12px;color:#6b7280;font-weight:500">系列</label>
+    <select id="returnSeries" onchange="renderRetMatrix()" style="border:1px solid #d1d5db;border-radius:6px;padding:5px 10px;font-size:13px;background:#fff;max-width:280px">
+      <option value="">全部系列</option>
+    </select>
+    <span style="font-size:11px;color:#9ca3af">选中具体系列后展开 SKU 退货率矩阵</span>
   </div>
   <div class="kpi-grid" id="returnKpi"></div>
+  <div id="retMatrixBox" style="display:none"></div>
   <div class="chart-row">
     <div class="chart-box"><h3>系列退货金额排行</h3><canvas id="returnRankChart"></canvas></div>
     <div class="chart-box"><h3>渠道退货占比</h3><canvas id="returnPieChart"></canvas></div>
@@ -396,6 +494,10 @@ const AUDIENCES = ''' + json.dumps(AUDIENCE_LIST, ensure_ascii=False) + r''';
 const RET_ALL_DAILY = ''' + ret_all_json_str + r''';
 const RET_LUG_DAILY = ''' + ret_lug_json_str + r''';
 const RET_BAG_DAILY = ''' + ret_bag_json_str + r''';
+// === 发货数据（2026-08-31 新增，退货率分母） ===
+const SHIP_ALL_DAILY = ''' + ship_all_json_str + r''';
+const SHIP_LUG_DAILY = ''' + ship_lug_json_str + r''';
+const SHIP_BAG_DAILY = ''' + ship_bag_json_str + r''';
 const LUG_DAILY = ''' + luggage_json_str + r''';
 const BAG_DAILY = ''' + bag_json_str + r''';
 const ALL_DAILY = ''' + all_json_str + r''';
@@ -418,6 +520,12 @@ const SKU_CH_DAILY = JSON.parse(''' + json.dumps(json.dumps(compressed_sku['ch_d
 const SKU_CH_SUMMARY = ''' + json.dumps(compressed_sku['ch_summary'], ensure_ascii=False) + r''';
 const SKU_META = JSON.parse(''' + json.dumps(json.dumps(compressed_sku['meta']), ensure_ascii=False) + r''');
 const SKU_BY_SERIES = ''' + json.dumps(compressed_sku['by_series'], ensure_ascii=False) + r''';
+// === SKU 级退货/发货数据（2026-09-24 新增，退货率矩阵） ===
+const RS_KEYS = ''' + rs_keys_json + r''';
+const RS_SERIES = ''' + rs_series_json + r''';
+const RS_DAILY = ''' + rs_daily_json + r''';
+const RS_UNREG_LUG = ''' + rs_unreg_lug_json + r''';
+const RS_UNREG_BAG = ''' + rs_unreg_bag_json + r''';
 
 
 // ===== 导航 =====
@@ -487,6 +595,20 @@ function getYoYPeriod(s,e){
   const s2=new Date(parseDate(s));s2.setFullYear(s2.getFullYear()-1);
   const e2=new Date(parseDate(e));e2.setFullYear(e2.getFullYear()-1);
   return {start:formatLocalDate(s2),end:formatLocalDate(e2)};
+}
+
+// ===== 限定色「代际同比」基准（2026-09-16 新增，老大拍板方案 B）=====
+// 背景：P2-26年限定色 的「去年同期」在业务上应对比 P2-25年限定色（上一代限定色），
+//       而系统默认按【同名】去查 → 2025年不存在同名系列 → 永远显示「新」。
+// 规则：名称形如「<前缀>{两位年}年限定色」的系列，同比基准改为上一代；
+//       其余系列一律返回原名 → 全站 40+ 个系列行为完全不变。
+// 影响范围：仅系列看板（卡片头同比 / 去年同期趋势线 / 去年同期渠道饼图）。
+function yoyBenchName(name){
+  var m=String(name).match(/^(.*?)(\d{2})年限定色$/);
+  if(!m)return name;
+  var yy=parseInt(m[2],10);
+  if(!(yy>10))return name;
+  return m[1]+('0'+(yy-1)).slice(-2)+'年限定色';
 }
 
 // ===== 数据聚合工具 =====
@@ -968,7 +1090,7 @@ function renderSeriesTab(){
   const container=document.getElementById('seriesCardsContainer');
   container.innerHTML='';
   filteredSorted.forEach(([name,val],idx)=>{
-    const yv=seriesYoy[name]||{amt:0,qty:0};
+    const yv=seriesYoy[yoyBenchName(name)]||{amt:0,qty:0};
     const yoyDiff=metric==='amt'?val.amt-yv.amt:val.qty-yv.qty;
     const yoyStr=yv[metric]?(yoyDiff>0?'<span class="up">▲ +'+Math.round(Math.abs(yoyDiff)/yv[metric]*100)+'%</span>':yoyDiff<0?'<span class="down">▼ -'+Math.round(Math.abs(yoyDiff)/yv[metric]*100)+'%</span>':'<span style="color:#9ca3af">—</span>'):'<span style="color:#9ca3af">新</span>';
     const pv=seriesPrev[name]||{amt:0,qty:0};
@@ -1003,10 +1125,11 @@ function toggleSeriesCard(idx){
       const [name,val]=seriesCards[idx]||[];
       if(!name)return;
       const ch=getVisChannels();
+      const yoyName=yoyBenchName(name);   // 限定色 → 上一代；其余系列 = name
       let dates=getDatesInRange(startDate,endDate);
       const yoyDates=dates.map(d=>{const p=d.split('-');return (+p[0]-1)+'-'+p[1]+'-'+p[2];});
       let trendNow=dates.map(dt=>{let v=0;if(!ALL_DAILY[dt])return 0;(ch.length?ch:Object.keys(ALL_DAILY[dt])).forEach(c=>{if(ALL_DAILY[dt][c]?.[name])v+=ALL_DAILY[dt][c][name][metric]||0;});return Math.round(v);});
-      let trendYoy=yoyDates.map(dt=>{let v=0;if(!ALL_DAILY[dt])return null;(ch.length?ch:Object.keys(ALL_DAILY[dt])).forEach(c=>{if(ALL_DAILY[dt][c]?.[name])v+=ALL_DAILY[dt][c][name][metric]||0;});return v?Math.round(v):null;});
+      let trendYoy=yoyDates.map(dt=>{let v=0;if(!ALL_DAILY[dt])return null;(ch.length?ch:Object.keys(ALL_DAILY[dt])).forEach(c=>{if(ALL_DAILY[dt][c]?.[yoyName])v+=ALL_DAILY[dt][c][yoyName][metric]||0;});return v?Math.round(v):null;});
       // 硬性防护：全新系列（无同期数据）不显示去年同期线
       const hasYoyData=trendYoy.some(function(x){return x!==null && x!==undefined;});
       // 如新系列无同期数据→隐藏去年同期线；如新系列当期无数据→裁剪至首个有销日期
@@ -1037,7 +1160,7 @@ function toggleSeriesCard(idx){
           var yoyP=getYoYPeriod(startDate,endDate);
           if(yoyP.start){
             var yoyD=getDatesInRange(yoyP.start,yoyP.end);
-            var yoyCh=CHANNELS.map(function(ccc){var a=0,q=0;yoyD.forEach(function(dt){if(!ALL_DAILY[dt]||!ALL_DAILY[dt][ccc]||!ALL_DAILY[dt][ccc][name])return;a+=ALL_DAILY[dt][ccc][name].amt||0;q+=ALL_DAILY[dt][ccc][name].qty||0;});return metric==='amt'?a:q;});
+            var yoyCh=CHANNELS.map(function(ccc){var a=0,q=0;yoyD.forEach(function(dt){if(!ALL_DAILY[dt]||!ALL_DAILY[dt][ccc]||!ALL_DAILY[dt][ccc][yoyName])return;a+=ALL_DAILY[dt][ccc][yoyName].amt||0;q+=ALL_DAILY[dt][ccc][yoyName].qty||0;});return metric==='amt'?a:q;});
             var yoyTot=yoyCh.reduce((a,b)=>a+b,0)||1;
             var yoyPieCtx=document.getElementById('series-pie-yoy-'+idx);
             if(yoyPieCtx)new Chart(yoyPieCtx,{type:'pie',data:{labels:CHANNELS.filter((_,i)=>yoyCh[i]>0),datasets:[{data:yoyCh.filter(v=>v>0),backgroundColor:pieColors.slice(0,CHANNELS.filter((_,i)=>yoyCh[i]>0).length)}]},options:{responsive:true,plugins:{legend:{position:'bottom',labels:{font:{size:9},generateLabels:function(cc2){var ds2=cc2.data.datasets[0];return ds2.data.map((v,i)=>({text:(cc2.data.labels[i]||'')+': '+Math.round(v).toLocaleString()+' ('+Math.round(v/yoyTot*100)+'%)',fillStyle:ds2.backgroundColor[i],strokeStyle:'#fff',lineWidth:0,hidden:false,index:i}));}}}}}});
@@ -1411,24 +1534,37 @@ function renderSKU(keepFilters){
     sizesSorted.forEach(function(sz){
       var v=colorMap[col]&&colorMap[col][sz]?colorMap[col][sz][metric]||0:0;
       colAmt+=v;
-      if(v>0){
+      // ===== 修复 2026-08-14：v !== 0 才显示（0 仍显示 —），负数用红色+退货标签
+      if(v!==0){
         var pct=Math.round(v/totalForPct*100);
-        html+='<td onclick="showSKUDetail(\''+selSeries+'|'+col+'|'+sz+'\')" style="cursor:pointer;background:rgba(37,99,235,'+(v/totalForPct*5+0.1).toFixed(2)+');text-align:center;font-weight:600">'+(metric==='amt'?Math.round(v).toLocaleString():Math.round(v).toLocaleString())+'<br><span style="font-size:12px;font-weight:600;color:'+(v/totalForPct>0.1?'#fff':'#374151')+'">'+pct+'%</span></td>';
+        var isReturn=v<0;
+        var tag=isReturn?'<div style="font-size:9px;color:#dc2626;font-weight:600;margin-top:1px">退货</div>':'';
+        var numColor=isReturn?'#dc2626':'#1f2937';
+        var bg=isReturn?'rgba(220,38,38,0.10)':'rgba(37,99,235,'+(Math.abs(v)/totalForPct*5+0.1).toFixed(2)+')';
+        var numText=(isReturn?'-':'')+Math.abs(Math.round(v)).toLocaleString();
+        html+='<td onclick="showSKUDetail(\''+selSeries+'|'+col+'|'+sz+'\')" style="cursor:pointer;background:'+bg+';text-align:center;font-weight:600;color:'+numColor+'">'+numText+'<br><span style="font-size:12px;font-weight:600;color:'+(Math.abs(v)/totalForPct>0.1?'#fff':'#374151')+'">'+pct+'%</span>'+tag+'</td>';
       }else{
         html+='<td style="text-align:center;color:#d1d5db">—</td>';
       }
     });
     var colPct=totalForPct>0?Math.round(colAmt/totalForPct*100):0;
-    html+='<td style="text-align:center;font-weight:600;background:#f3f4f6">'+(metric==='amt'?Math.round(colAmt).toLocaleString():Math.round(colAmt).toLocaleString())+'<br><span style="font-size:11px;color:#374151;font-weight:500">'+colPct+'%</span></td></tr>';
+    var colAmtText=Math.round(colAmt).toLocaleString();
+    var colNeg=colAmt<0;
+    if(colNeg)colAmtText='-'+Math.abs(Math.round(colAmt)).toLocaleString();
+    html+='<td style="text-align:center;font-weight:600;background:'+(colNeg?'rgba(220,38,38,0.06)':'#f3f4f6')+';color:'+(colNeg?'#dc2626':'inherit')+'">'+colAmtText+'<br><span style="font-size:11px;font-weight:500">'+(colNeg?'退货':'')+colPct+'%</span></td></tr>';
   });
   html+='<tr class="summary"><td>合计</td>';
   sizesSorted.forEach(function(sz){
     var szAmt=0;
     colorsSorted.forEach(function(col){if(colorMap[col]&&colorMap[col][sz])szAmt+=colorMap[col][sz][metric]||0;});
     var szPct=totalForPct>0?Math.round(szAmt/totalForPct*100):0;
-    html+='<td style="text-align:center;padding:6px 4px"><div style="display:flex;justify-content:center;align-items:center;gap:8px"><span style="font-weight:600">'+(metric==='amt'?Math.round(szAmt).toLocaleString():Math.round(szAmt).toLocaleString())+'</span><span style="font-size:11px;color:#374151">'+szPct+'%</span></div></td>';
+    var szText=Math.round(szAmt).toLocaleString();
+    if(szAmt<0)szText='-'+Math.abs(Math.round(szAmt)).toLocaleString();
+    html+='<td style="text-align:center;padding:6px 4px"><div style="display:flex;justify-content:center;align-items:center;gap:8px"><span style="font-weight:600;'+(szAmt<0?'color:#dc2626':'')+'">'+szText+'</span><span style="font-size:11px;color:#374151">'+szPct+'%</span></div></td>';
   });
-  html+='<td style="text-align:center;padding:6px 4px"><div style="display:flex;justify-content:center;align-items:center;gap:8px"><span style="font-weight:700">'+(metric==='amt'?Math.round(seriesTotal[metric]).toLocaleString():Math.round(seriesTotal[metric]).toLocaleString())+'</span><span style="font-size:11px;font-weight:500">100%</span></div></td></tr>';
+  var totalText=Math.round(seriesTotal[metric]).toLocaleString();
+  if(seriesTotal[metric]<0)totalText='-'+Math.abs(Math.round(seriesTotal[metric])).toLocaleString();
+  html+='<td style="text-align:center;padding:6px 4px"><div style="display:flex;justify-content:center;align-items:center;gap:8px"><span style="font-weight:700;'+(seriesTotal[metric]<0?'color:#dc2626':'')+'">'+totalText+'</span><span style="font-size:11px;font-weight:500">100%</span></div></td></tr>';
   html+='</tbody></table></div>';
 
   // 帕累托
@@ -1650,9 +1786,10 @@ function renderReturn(){
   var cat=document.getElementById('returnCat').value;
   var daily=cat==='luggage'?LUG_DAILY:cat==='bag'?BAG_DAILY:ALL_DAILY;
   var retD=cat==='luggage'?RET_LUG_DAILY:cat==='bag'?RET_BAG_DAILY:RET_ALL_DAILY;
+  var shipD=cat==='luggage'?SHIP_LUG_DAILY:cat==='bag'?SHIP_BAG_DAILY:SHIP_ALL_DAILY;
   var chs=getVisChannels();
   var m=metric||'amt';
-  var totalRet=0,totalRetQty=0,totalSales=0,seriesMap={},chMap={};
+  var totalRet=0,totalRetQty=0,seriesMap={},chMap={};
   var dates=getDatesInRange(startDate,endDate);
   dates.forEach(function(d){
     if(!retD[d])return;
@@ -1665,10 +1802,6 @@ function renderReturn(){
         if(!v)return;
         totalRet+=v.return_amt||0;
         totalRetQty+=v.return_qty||0;
-        if(daily[d]&&daily[d][ch]){
-          var s=daily[d][ch][sk];
-          if(s) totalSales+=s.amt||0;
-        }
         seriesMap[sk]=seriesMap[sk]||{amt:0,qty:0};
         seriesMap[sk].amt+=v.return_amt||0;
         seriesMap[sk].qty+=v.return_qty||0;
@@ -1682,13 +1815,34 @@ function renderReturn(){
       }
     });
   });
-  var rate=totalSales>0?(totalRet/totalSales*100):0;
+  // 退货率口径（2026-08-31：仅统计行李箱+包袋，赠品/其他不纳入；全档=行李箱+包袋合并，分母取$total全量）
+  var rateRetSets = cat==='all' ? [RET_LUG_DAILY, RET_BAG_DAILY] : [retD];
+  var rateShipSets = cat==='all' ? [SHIP_LUG_DAILY, SHIP_BAG_DAILY] : [shipD];
+  var rateRetAmt=0,rateRetQty=0,rateShipAmt=0,rateShipQty=0;
+  dates.forEach(function(d){
+    rateShipSets.forEach(function(sd){
+      if(!sd[d])return;
+      chs.forEach(function(ch){
+        var t=sd[d][ch]&&sd[d][ch]['$total'];
+        if(t){rateShipAmt+=t.ship_amt||0;rateShipQty+=t.ship_qty||0;}
+      });
+    });
+    rateRetSets.forEach(function(rd){
+      if(!rd[d])return;
+      chs.forEach(function(ch){
+        var t=rd[d][ch]&&rd[d][ch]['$total'];
+        if(t){rateRetAmt+=t.return_amt||0;rateRetQty+=t.return_qty||0;}
+      });
+    });
+  });
+  var rateAmt=rateShipAmt>0?(rateRetAmt/rateShipAmt*100):0;
+  var rateQty=rateShipQty>0?(rateRetQty/rateShipQty*100):0;
   renderReturnCompareRow('returnKpi',retD,chs,startDate,endDate,m);
   document.getElementById('returnKpi').innerHTML=
     '<div class="kpi-card"><div class="label">退货金额</div><div class="value">'+fmtD(totalRet)+'</div></div>'+
-    '<div class="kpi-card"><div class="label">退货数量</div><div class="value">'+totalRetQty.toLocaleString()+'笔</div></div>'+
-    '<div class="kpi-card"><div class="label">退货率</div><div class="value" style="color:'+(rate>10?'#dc2626':'#059669')+'">'+rate.toFixed(1)+'%</div><div class="sub">退货/销售</div></div>'+
-    '<div class="kpi-card"><div class="label">退货占比<<总销售</div><div class="value" style="color:#8b5cf6">'+(totalSales>0?(totalRet/totalSales*100).toFixed(1):'-')+'%</div></div>'+
+    '<div class="kpi-card"><div class="label">退货数量</div><div class="value">'+totalRetQty.toLocaleString()+'件</div></div>'+
+    '<div class="kpi-card"><div class="label">金额退货率</div><div class="value" style="color:'+(rateAmt>10?'#dc2626':'#059669')+'">'+rateAmt.toFixed(1)+'%</div><div class="sub">退货金额/发货金额</div></div>'+
+    '<div class="kpi-card"><div class="label">数量退货率</div><div class="value" style="color:'+(rateQty>10?'#dc2626':'#059669')+'">'+rateQty.toFixed(1)+'%</div><div class="sub">退货数量/发货数量</div></div>'+
     '<div class="kpi-card" style="background:rgba(37,99,235,.04);border-color:rgba(37,99,235,.15)"><div class="label">当前维度</div><div class="value" style="color:#2563eb;font-size:16px">'+(m==='amt'?'按金额':'按数量')+'</div>';
   // 趋势图（当期+去年同期联动 showYoy）
   var labels=[],retData=[],trendLabel=(m==='amt'?'退货金额':'退货数量');
@@ -1753,6 +1907,243 @@ function renderReturn(){
 }
 '''
 
+# ===== SKU 退货率矩阵（2026-09-24 新增） =====
+RET_MATRIX_CSS = r'''
+/* SKU 退货率矩阵 */
+.retmx-wrap{background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:14px 16px;margin-bottom:14px}
+.retmx-wrap h3{font-size:13px;margin:0 0 4px;color:#374151;font-weight:600}
+.retmx-note{font-size:11px;color:#9ca3af;line-height:1.8;max-width:720px}
+.retmx-scroll{overflow-x:auto;margin-top:10px}
+table.retmx{border-collapse:separate;border-spacing:2px;font-size:11px;width:100%}
+table.retmx th{background:#f3f4f6;color:#374151;font-weight:600;padding:6px 8px;text-align:center;white-space:nowrap;font-size:11px;border-radius:4px}
+table.retmx th.rw{text-align:left;background:#f9fafb}
+table.retmx td{text-align:center;padding:5px 6px;border-radius:4px;white-space:nowrap;vertical-align:middle;color:#3f3a33}
+table.retmx td.mx-rowh{text-align:left;font-weight:600;background:#f9fafb;color:#374151;max-width:190px}
+table.retmx td.mx-empty{color:#d1d5db;background:#fafafa}
+table.retmx td.mx-sub{background:#f3f4f6;font-weight:700;color:#374151}
+table.retmx tr.mx-total td{background:#eff6ff;font-weight:700;border-top:2px solid #2563eb}
+.retmx-r{font-size:12px;font-weight:700;line-height:1.3}
+.retmx-n{font-size:10px;opacity:.72;line-height:1.35;font-weight:400}
+.mx-flag{display:inline-block;font-size:9px;background:#b0524c;color:#fff;border-radius:3px;padding:0 3px;margin-left:2px;font-weight:600;vertical-align:1px}
+.mx-small{display:inline-block;font-size:9px;color:#9ca3af;border:1px solid #e5e7eb;border-radius:3px;padding:0 3px;margin-left:2px;vertical-align:1px}
+.mx-btn{font-size:11px;padding:3px 12px;border-radius:14px;border:1px solid #d1d5db;background:#fff;color:#6b7280;cursor:pointer}
+.mx-btn.on{background:#c9a962;border-color:#c9a962;color:#fff;font-weight:600}
+'''
+
+RENDER_RET_MATRIX_FN = r'''
+// ===== SKU 退货率矩阵（2026-09-24 新增：行=颜色、列=尺寸、格内=退货率） =====
+// 口径：退货率 = 退货 ÷ 发货（分母是发货，不是销售、也不是退货总量）。
+// 只对「行李箱 / 包袋」生效，与退货 tab 其余部分一致；未登记（无颜色或尺寸）单独兜底一行，保证能对账闭合。
+var retMxByAmt = false;
+var _rsKeyIdx = null, _rsSerIdx = null;
+function _rsIdxMap(){
+  if(!_rsKeyIdx){_rsKeyIdx={};for(var i=0;i<RS_KEYS.length;i++){_rsKeyIdx[RS_KEYS[i]]=i;}}
+  if(!_rsSerIdx){_rsSerIdx={};for(var j=0;j<RS_SERIES.length;j++){_rsSerIdx[RS_SERIES[j]]=j;}}
+}
+function setRetMxMetric(byAmt){retMxByAmt=!!byAmt;renderRetMatrix();}
+function _sizeOrder(s){var m=String(s).match(/(\d+(?:\.\d+)?)/);return m?parseFloat(m[1]):99999;}
+function _shortNum(v){v=Math.round(v||0);return v>=10000?(v/10000).toFixed(1)+'万':v.toLocaleString();}
+// 热力色：暖白 → 淡金 → 金 → 雅致红（ITO 金白底，红＝高退货率）
+function _heatBg(t){
+  if(!(t>0)){t=0;} if(t>1){t=1;}
+  var st=[[250,248,244],[243,232,208],[201,169,98],[176,82,76]];
+  var seg=Math.floor(t*(st.length-1)); if(seg>st.length-2){seg=st.length-2;} if(seg<0){seg=0;}
+  var f=t*(st.length-1)-seg, a=st[seg], b=st[seg+1];
+  return 'rgb('+Math.round(a[0]+(b[0]-a[0])*f)+','+Math.round(a[1]+(b[1]-a[1])*f)+','+Math.round(a[2]+(b[2]-a[2])*f)+')';
+}
+function _heatFg(t){return t>0.6?'#fff':'#3f3a33';}
+function _rsCatSets(){
+  var L={},B={};
+  if(typeof LUG_SERIES!=='undefined'){LUG_SERIES.forEach(function(s){L[s]=1;});}
+  if(typeof BAG_SERIES!=='undefined'){BAG_SERIES.forEach(function(s){B[s]=1;});}
+  return {L:L,B:B};
+}
+// 汇总某系列的 SKU 级退货/发货（跟随页面日期与渠道筛选）
+function retMatrixData(seriesName,chs,start,end,cat){
+  _rsIdxMap();
+  var cs=_rsCatSets(), wantLug=(cat!=='bag'), wantBag=(cat!=='luggage');
+  var prefix=seriesName+'|';
+  var dates=getDatesInRange(start,end);
+  var ck=cs.L[seriesName]?'luggage':(cs.B[seriesName]?'bag':'');
+  var okLug=ck==='luggage'&&wantLug, okBag=ck==='bag'&&wantBag;
+  var cells={},colorTot={},sizeTot={},all={sq:0,sa:0,rq:0,ra:0},unreg={sq:0,sa:0,rq:0,ra:0};
+  dates.forEach(function(d){
+    var day=RS_DAILY[d];
+    if(day&&(okLug||okBag)){
+      chs.forEach(function(ch){
+        var arr=day[ch]; if(!arr){return;}
+        for(var i=0;i<arr.length;i++){
+          var row=arr[i], kk=RS_KEYS[row[0]];
+          if(!kk||kk.indexOf(prefix)!==0){continue;}
+          var p=kk.split('|'),col=p[1]||'（无颜色）',sz=p[2]||'（无尺寸）';
+          if(!cells[col]){cells[col]={};}
+          if(!cells[col][sz]){cells[col][sz]={sq:0,sa:0,rq:0,ra:0};}
+          if(!colorTot[col]){colorTot[col]={sq:0,sa:0,rq:0,ra:0};}
+          if(!sizeTot[sz]){sizeTot[sz]={sq:0,sa:0,rq:0,ra:0};}
+          var o=cells[col][sz],ct=colorTot[col],st=sizeTot[sz];
+          o.sq+=row[1];o.sa+=row[2];o.rq+=row[3];o.ra+=row[4];
+          ct.sq+=row[1];ct.sa+=row[2];ct.rq+=row[3];ct.ra+=row[4];
+          st.sq+=row[1];st.sa+=row[2];st.rq+=row[3];st.ra+=row[4];
+          all.sq+=row[1];all.sa+=row[2];all.rq+=row[3];all.ra+=row[4];
+        }
+      });
+    }
+    var pairs=[];
+    if(okLug&&RS_UNREG_LUG[d]){pairs.push(RS_UNREG_LUG[d]);}
+    if(okBag&&RS_UNREG_BAG[d]){pairs.push(RS_UNREG_BAG[d]);}
+    pairs.forEach(function(dayU){
+      chs.forEach(function(ch){
+        var arr=dayU[ch]; if(!arr){return;}
+        for(var i=0;i<arr.length;i++){
+          var row=arr[i];
+          if(RS_SERIES[row[0]]!==seriesName){continue;}
+          unreg.sq+=row[1];unreg.sa+=row[2];unreg.rq+=row[3];unreg.ra+=row[4];
+        }
+      });
+    });
+  });
+  return {cells:cells,colorTot:colorTot,sizeTot:sizeTot,all:all,unreg:unreg,cat:ck};
+}
+function renderRetMatrix(){
+  var box=document.getElementById('retMatrixBox');
+  if(!box){return;}
+  var catEl=document.getElementById('returnCat');
+  var cat=catEl?catEl.value:'all';
+  var selEl=document.getElementById('returnSeries');
+  if(!selEl){box.style.display='none';return;}
+  _rsIdxMap();
+  var chs=getVisChannels();
+  var dates=getDatesInRange(startDate,endDate);
+  var cs=_rsCatSets(), wantLug=(cat!=='bag'), wantBag=(cat!=='luggage');
+  // 1) 可选系列：范围内有退货/发货的系列，按退货金额降序
+  var agg={};
+  function addAgg(sn,rq,ra){if(!sn){return;}if(!agg[sn]){agg[sn]={rq:0,ra:0};}agg[sn].rq+=rq;agg[sn].ra+=ra;}
+  dates.forEach(function(d){
+    var day=RS_DAILY[d];
+    if(day){chs.forEach(function(ch){
+      var arr=day[ch]; if(!arr){return;}
+      for(var i=0;i<arr.length;i++){
+        var kk=RS_KEYS[arr[i][0]]; if(!kk){continue;}
+        var sn=kk.split('|')[0];
+        var c=cs.L[sn]?'luggage':(cs.B[sn]?'bag':'');
+        if(!c){continue;}
+        if(c==='luggage'&&!wantLug){continue;}
+        if(c==='bag'&&!wantBag){continue;}
+        addAgg(sn,arr[i][3],arr[i][4]);
+      }
+    });}
+    var us=[];
+    if(wantLug&&RS_UNREG_LUG[d]){us.push(RS_UNREG_LUG[d]);}
+    if(wantBag&&RS_UNREG_BAG[d]){us.push(RS_UNREG_BAG[d]);}
+    us.forEach(function(dayU){
+      chs.forEach(function(ch){
+        var arr=dayU[ch]; if(!arr){return;}
+        for(var i=0;i<arr.length;i++){addAgg(RS_SERIES[arr[i][0]],arr[i][3],arr[i][4]);}
+      });
+    });
+  });
+  var list=Object.keys(agg).sort(function(a,b){
+    return (agg[b].ra-agg[a].ra)||(agg[b].rq-agg[a].rq)||(a<b?-1:1);
+  });
+  var cur=selEl.value, opts='<option value="">全部系列</option>';
+  list.forEach(function(s){opts+='<option value="'+escapeHtml(s)+'">'+escapeHtml(s)+'（退'+(agg[s].rq||0)+'件）</option>';});
+  selEl.innerHTML=opts;
+  if(cur&&list.indexOf(cur)>=0){selEl.value=cur;}else{selEl.value='';}
+  var sel=selEl.value;
+  if(!sel){box.style.display='none';box.innerHTML='';return;}
+  // 2) 矩阵
+  var md=retMatrixData(sel,chs,startDate,endDate,cat);
+  var useAmt=retMxByAmt;
+  // 系列口径合计 = 明细 + 未登记（这样「系列总计」永远与系列层一致，不会出现明细为空时显示 0/0 的矛盾）
+  var totNum=useAmt?(md.all.ra+md.unreg.ra):(md.all.rq+md.unreg.rq);
+  var totDen=useAmt?(md.all.sa+md.unreg.sa):(md.all.sq+md.unreg.sq);
+  var sRate=totDen>0?totNum/totDen*100:0;
+  var MINSHIP=20;
+  // 着色锚点：矩阵内最大有效格率（排除发货<MINSHIP 的小样本离群），下限取整体率 1.2 倍。
+  // 用「矩阵内相对最大」而非「整体率×固定倍数」，否则率普遍集中的系列（如退货率 23%~38%）会糊成一片。
+  var anchorRate=0;
+  Object.keys(md.cells).forEach(function(cc){
+    Object.keys(md.cells[cc]).forEach(function(zz){
+      var o=md.cells[cc][zz];
+      if(o.sq<MINSHIP){return;}
+      var dd=useAmt?o.sa:o.sq, nn=useAmt?o.ra:o.rq;
+      if(dd>0){var rr=nn/dd*100;if(rr>anchorRate){anchorRate=rr;}}
+    });
+  });
+  var anchor=Math.max(anchorRate, sRate*1.2, 1);
+  var colors=Object.keys(md.cells).sort(function(a,b){
+    return ((md.colorTot[b].sq||0)-(md.colorTot[a].sq||0))||((md.colorTot[b].sa||0)-(md.colorTot[a].sa||0))||(a<b?-1:1);
+  });
+  var sizes=Object.keys(md.sizeTot).sort(function(a,b){return _sizeOrder(a)-_sizeOrder(b);});
+  function cellHtml(c){
+    if(!c){return '<td class="mx-empty">—</td>';}
+    var den=useAmt?c.sa:c.sq, num=useAmt?c.ra:c.rq;
+    if(den<=0){return '<td class="mx-empty" title="无发货">—</td>';}
+    var rate=num/den*100;
+    var t=rate/anchor; if(t>1){t=1;}
+    var abn=(rate>sRate*2)&&(c.sq>=MINSHIP);
+    var sml=(!abn)&&(c.sq<MINSHIP);
+    return '<td style="background:'+_heatBg(t)+';color:'+_heatFg(t)+'" title="退货 '+_shortNum(num)+' / 发货 '+_shortNum(den)+'（'+c.sq+'件）">'
+      +'<div class="retmx-r">'+rate.toFixed(1)+'%'+(abn?'<span class="mx-flag">异常</span>':(sml?'<span class="mx-small">样本小</span>':''))+'</div>'
+      +'<div class="retmx-n">'+_shortNum(num)+'/'+_shortNum(den)+'</div></td>';
+  }
+  var th='<thead><tr><th class="rw">颜色 \\ 尺寸</th>';
+  sizes.forEach(function(sz){th+='<th>'+escapeHtml(sz)+'</th>';});
+  th+='<th>小计</th></tr></thead>';
+  var rows='';
+  colors.forEach(function(col){
+    rows+='<tr><td class="mx-rowh" title="'+escapeHtml(col)+'">'+escapeHtml(col)+'</td>';
+    sizes.forEach(function(sz){rows+=cellHtml(md.cells[col][sz]);});
+    var ct=md.colorTot[col], cd=useAmt?ct.sa:ct.sq, cn=useAmt?ct.ra:ct.rq;
+    rows+='<td class="mx-sub">'+(cd>0?(cn/cd*100).toFixed(1)+'%':'—')+'<div class="retmx-n">'+_shortNum(cn)+'/'+_shortNum(cd)+'</div></td></tr>';
+  });
+  rows+='<tr class="mx-total"><td class="mx-rowh" style="background:#eff6ff">系列总计</td>';
+  sizes.forEach(function(sz){
+    var st=md.sizeTot[sz], d=useAmt?st.sa:st.sq, n=useAmt?st.ra:st.rq;
+    rows+='<td>'+(d>0?(n/d*100).toFixed(1)+'%':'—')+'<div class="retmx-n">'+_shortNum(n)+'/'+_shortNum(d)+'</div></td>';
+  });
+  rows+='<td>'+(totDen>0?sRate.toFixed(1)+'%':'—')+'<div class="retmx-n">'+_shortNum(totNum)+'/'+_shortNum(totDen)+'</div></td></tr>';
+  var unregRow='';
+  if(md.unreg.sq||md.unreg.sa||md.unreg.rq||md.unreg.ra){
+    var ud=useAmt?md.unreg.sa:md.unreg.sq, un=useAmt?md.unreg.ra:md.unreg.rq;
+    unregRow='<tr><td class="mx-rowh" style="color:#b0524c">未登记<div class="retmx-n">无颜色或尺寸</div></td>'
+      +'<td colspan="'+Math.max(sizes.length,1)+'" style="background:#fdf6f5">'+(ud>0?(un/ud*100).toFixed(1)+'%':'—')+'<div class="retmx-n">'+_shortNum(un)+'/'+_shortNum(ud)+'</div></td>'
+      +'<td class="mx-sub">'+(ud>0?(un/ud*100).toFixed(1)+'%':'—')+'</td></tr>';
+  }
+  // 3) 页内对账：矩阵（含未登记）vs 系列层，必须闭合
+  var lvQty=0, lvShip=0;
+  var rLayers=[],sLayers=[];
+  if(wantLug){rLayers.push(RET_LUG_DAILY);sLayers.push(SHIP_LUG_DAILY);}
+  if(wantBag){rLayers.push(RET_BAG_DAILY);sLayers.push(SHIP_BAG_DAILY);}
+  dates.forEach(function(d){
+    chs.forEach(function(ch){
+      rLayers.forEach(function(src){var sv=src[d]&&src[d][ch]&&src[d][ch][sel];if(sv){lvQty+=sv.return_qty||0;}});
+      sLayers.forEach(function(src){var sv=src[d]&&src[d][ch]&&src[d][ch][sel];if(sv){lvShip+=sv.ship_qty||0;}});
+    });
+  });
+  var mxQty=md.all.rq+md.unreg.rq, mxShip=md.all.sq+md.unreg.sq;
+  var ok=(mxQty===lvQty);
+  var checkTxt='<b>对账：</b>矩阵退货 '+mxQty+' 件（明细 '+md.all.rq+' ＋ 未登记 '+md.unreg.rq+'）vs 系列层退货 '+lvQty+' 件 → 差额 <b style="color:'+(ok?'#059669':'#dc2626')+'">'+(mxQty-lvQty)+'</b>'
+    +'　｜　发货 矩阵 '+mxShip+' vs 系列层 '+lvShip+' → 差额 <b style="color:'+(mxShip===lvShip?'#059669':'#dc2626')+'">'+(mxShip-lvShip)+'</b>'
+    +(ok&&mxShip===lvShip?'　·　已闭合':'　·　请核查');
+  box.style.display='';
+  box.innerHTML='<div class="retmx-wrap">'
+    +'<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">'
+    +'<div><h3>'+escapeHtml(sel)+' · SKU 退货率矩阵</h3>'
+    +'<div class="retmx-note">格内上行＝退货率（'+(useAmt?'退货金额 ÷ 发货金额':'退货数量 ÷ 发货数量')+'）；下行＝退货/发货。<br>'
+    +'底色越深＝退货率越高（锚点＝矩阵内最高 '+anchorRate.toFixed(1)+'%，本系列整体 '+sRate.toFixed(1)+'%）。'
+    +'「异常」＝率高于整体 2 倍且发货 ≥'+MINSHIP+' 件；「样本小」＝发货 &lt;'+MINSHIP+' 件，率不可信需谨慎。'
+    +'日期与渠道跟随页面顶部筛选。</div></div>'
+    +'<div style="display:flex;gap:6px">'
+    +'<button class="mx-btn'+(useAmt?'':' on')+'" onclick="setRetMxMetric(false)">数量率</button>'
+    +'<button class="mx-btn'+(useAmt?' on':'')+'" onclick="setRetMxMetric(true)">金额率</button>'
+    +'</div></div>'
+    +'<div class="retmx-scroll"><table class="retmx">'+th+'<tbody>'+rows+unregRow+'</tbody></table></div>'
+    +'<div style="margin-top:10px;padding:8px 12px;border-radius:6px;background:'+(ok&&mxShip===lvShip?'#f0fdf4':'#fef2f2')+';font-size:11px;color:#374151">'+checkTxt+'</div>'
+    +'</div>';
+}
+'''
+
 COMPARE_EVENTS = '''
 document.getElementById('compareToggle').addEventListener('click',function(){
   compareOn=!compareOn;this.classList.toggle('active');
@@ -1781,6 +2172,13 @@ html = html.replace("document.getElementById('audKpi').innerHTML=", "  renderCom
 html = html.replace("document.getElementById('sizeKpi').innerHTML=", "  renderCompareRow('sizeKpi',daily,ch,startDate,endDate,metric);\n  document.getElementById('sizeKpi').innerHTML=")
 html = html.replace("document.getElementById('colorKpi').innerHTML=", "  renderCompareRow('colorKpi',daily,ch,startDate,endDate,metric);\n  document.getElementById('colorKpi').innerHTML=")
 html = html.replace("renderLuggage();", "renderLuggage();\n" + COMPARE_EVENTS)
+
+# ===== SKU 退货率矩阵注入（2026-09-24 新增） =====
+html = html.replace('tr.summary td{font-weight:700;background:#eff6ff;border-top:2px solid #2563eb}',
+                    'tr.summary td{font-weight:700;background:#eff6ff;border-top:2px solid #2563eb}\n' + RET_MATRIX_CSS)
+html = html.replace('function renderReturn(){', RENDER_RET_MATRIX_FN + '\nfunction renderReturn(){')
+html = html.replace("  renderReturnCompareRow('returnKpi',retD,chs,startDate,endDate,m);",
+                    "  renderRetMatrix();\n  renderReturnCompareRow('returnKpi',retD,chs,startDate,endDate,m);")
 
 # 写文件（使用LF换行，避免Windows CRLF导致Node.js解析JS报错）
 with open(os.path.join(BASE, 'product_dashboard.html'), 'w', encoding='utf-8', newline='\n') as f:

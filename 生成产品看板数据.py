@@ -96,6 +96,21 @@ return_data = R()
 return_lug_data = R()
 return_bag_data = R()
 
+# ===== 发货数据累加器（2026-08-31 新增，退货率分母：退货金额/发货金额、退货数量/发货数量） =====
+S = lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: {'ship_qty': 0, 'ship_amt': 0})))
+ship_data = S()
+ship_lug_data = S()
+ship_bag_data = S()
+
+# ===== SKU 级 退货/发货 累加器（2026-09-24 新增，退货率矩阵用） =====
+# 纯加法：不动 sku_daily.json 结构（它有 10+ 处读取点，改它风险大）。
+# 矩阵口径：行=颜色、列=尺寸、格内主值 = 退货数量 ÷ 发货数量。
+# 未登记兜底：拿不到颜色/尺寸的行进 unreg 桶，保证「矩阵合计 + 未登记 = 系列层退货总额」能精确闭合。
+RS = lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: {'sq': 0, 'sa': 0.0, 'rq': 0, 'ra': 0.0})))
+sku_rs_data = RS()          # [date][ch][sku_key] = {sq 发货数量, sa 发货金额, rq 退货数量, ra 退货金额}
+sku_unreg_lug = RS()        # [date][ch][显示名] 未登记（无颜色或尺寸）· 行李箱
+sku_unreg_bag = RS()        # [date][ch][显示名] 未登记 · 包袋
+
 total_read = 0
 total_matched = 0
 total_audience = 0
@@ -114,7 +129,8 @@ for fname in files:
         qty_raw = row.get('实际销售量', row.get('数量', 0))
         qty = int(qty_raw) if qty_raw and not pd.isna(qty_raw) else 0
         amt_raw = row.get('实际销售额', 0)
-        amt = int(amt_raw) if amt_raw and not pd.isna(amt_raw) else 0
+        # === 修复 2026-08-14：amt 改为 round() 保留精度（避免 int() 截断小数累计丢精度） ===
+        amt = round(float(amt_raw), 2) if amt_raw and not pd.isna(amt_raw) else 0
         # === 退货字段提取（2026-07-30 新增，float 保留源数据精度） ===
         ret_qty_raw = row.get('退货总量', 0)
         ret_qty = int(ret_qty_raw) if ret_qty_raw and not pd.isna(ret_qty_raw) else 0
@@ -123,7 +139,15 @@ for fname in files:
             ret_amt = float(ret_amt_raw) if ret_amt_raw and not pd.isna(ret_amt_raw) else 0.0
         except (ValueError, TypeError):
             ret_amt = 0.0
-        if qty == 0 and amt == 0 and ret_qty == 0 and ret_amt == 0:
+        # === 发货字段提取（2026-08-31 新增，退货率分母用） ===
+        ship_qty_raw = row.get('发货总量', 0)
+        ship_qty = int(ship_qty_raw) if ship_qty_raw and not pd.isna(ship_qty_raw) else 0
+        ship_amt_raw = row.get('发货总金额', 0)
+        try:
+            ship_amt = float(ship_amt_raw) if ship_amt_raw and not pd.isna(ship_amt_raw) else 0.0
+        except (ValueError, TypeError):
+            ship_amt = 0.0
+        if qty == 0 and amt == 0 and ret_qty == 0 and ret_amt == 0 and ship_qty == 0 and ship_amt == 0:
             continue
         if not date_str or not name:
             continue
@@ -246,6 +270,23 @@ for fname in files:
                 cat_name = '行李箱' if is_luggage else ('包袋' if is_bag else '其他')
                 sku_meta[sku_key] = {'series': display, 'color': sku_color, 'size': sku_size, 'category': cat_name}
 
+        # === SKU 级退货/发货累加（2026-09-24 新增，纯加法） ===
+        # 只在有退货或发货时才落库，避免把大量全 0 组合写进 JSON（对账合计不受影响）
+        if ship_qty or ret_qty or ship_amt or ret_amt:
+            if sku_color and sku_size:
+                _rs = sku_rs_data[date_str][ch][sku_key]
+            elif is_luggage:
+                _rs = sku_unreg_lug[date_str][ch][display]
+            elif is_bag:
+                _rs = sku_unreg_bag[date_str][ch][display]
+            else:
+                _rs = None
+            if _rs is not None:
+                _rs['sq'] += ship_qty
+                _rs['sa'] += ship_amt
+                _rs['rq'] += ret_qty
+                _rs['ra'] += ret_amt
+
         # === 退货累加（2026-07-30 新增，纯加法） ===
         return_data[date_str][ch]['$total']['return_qty'] += ret_qty
         return_data[date_str][ch]['$total']['return_amt'] += ret_amt
@@ -261,6 +302,22 @@ for fname in files:
             return_bag_data[date_str][ch]['$total']['return_amt'] += ret_amt
             return_bag_data[date_str][ch][display]['return_qty'] += ret_qty
             return_bag_data[date_str][ch][display]['return_amt'] += ret_amt
+
+        # === 发货累加（2026-08-31 新增，纯加法） ===
+        ship_data[date_str][ch]['$total']['ship_qty'] += ship_qty
+        ship_data[date_str][ch]['$total']['ship_amt'] += ship_amt
+        ship_data[date_str][ch][display]['ship_qty'] += ship_qty
+        ship_data[date_str][ch][display]['ship_amt'] += ship_amt
+        if is_luggage:
+            ship_lug_data[date_str][ch]['$total']['ship_qty'] += ship_qty
+            ship_lug_data[date_str][ch]['$total']['ship_amt'] += ship_amt
+            ship_lug_data[date_str][ch][display]['ship_qty'] += ship_qty
+            ship_lug_data[date_str][ch][display]['ship_amt'] += ship_amt
+        if is_bag:
+            ship_bag_data[date_str][ch]['$total']['ship_qty'] += ship_qty
+            ship_bag_data[date_str][ch]['$total']['ship_amt'] += ship_amt
+            ship_bag_data[date_str][ch][display]['ship_qty'] += ship_qty
+            ship_bag_data[date_str][ch][display]['ship_amt'] += ship_amt
 
 print(f'总行数: {total_read}, 已匹配: {total_matched}, 匹配人群: {total_audience}')
 
@@ -400,6 +457,36 @@ def write_return_json(data, name, out_dir):
 write_return_json(return_data, 'return_daily.json', out_dir)
 write_return_json(return_lug_data, 'luggage_return_daily.json', out_dir)
 write_return_json(return_bag_data, 'bag_return_daily.json', out_dir)
+
+# ===== 发货JSON输出（2026-08-31 新增，退货率分母） =====
+write_return_json(ship_data, 'ship_daily.json', out_dir)
+write_return_json(ship_lug_data, 'luggage_ship_daily.json', out_dir)
+write_return_json(ship_bag_data, 'bag_ship_daily.json', out_dir)
+
+# ===== SKU 级退货/发货 JSON 输出（2026-09-24 新增，退货率矩阵用） =====
+# 新增文件，不改 sku_daily.json。键短名压缩：sq 发货数量 / sa 发货金额 / rq 退货数量 / ra 退货金额
+# 系列索引必须含「未登记桶」的系列（它们没有 SKU 键，不会出现在 sku_meta 里），否则未登记数据会被前端漏掉
+_rs_series_all = set(k.split('|', 1)[0] for k in sku_meta.keys())
+for _src in (sku_unreg_lug, sku_unreg_bag):
+    for _day in _src.values():
+        for _ch in _day.values():
+            _rs_series_all.update(_ch.keys())
+_sku_rs_out = {
+    'meta': {
+        'generated_at': pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'channels': list(CHANNEL_NAMES.values()),
+        'series': sorted(_rs_series_all),
+        'sku_keys': sorted(sku_meta.keys()),
+    },
+    'daily': {d: dict_to_native(sku_rs_data[d]) for d in sorted(sku_rs_data.keys())},
+    'unreg_lug': {d: dict_to_native(sku_unreg_lug[d]) for d in sorted(sku_unreg_lug.keys())},
+    'unreg_bag': {d: dict_to_native(sku_unreg_bag[d]) for d in sorted(sku_unreg_bag.keys())},
+}
+with open(os.path.join(out_dir, 'sku_ret_ship_daily.json'), 'w', encoding='utf-8') as f:
+    json.dump(_sku_rs_out, f, ensure_ascii=False)
+_rs_sz = os.path.getsize(os.path.join(out_dir, 'sku_ret_ship_daily.json'))
+_n_sku_rows = sum(len(v) for day in sku_rs_data.values() for v in day.values())
+print(f'SKU退货/发货 JSON: {_rs_sz/1024:.0f} KB, (date,ch,sku)组合 {_n_sku_rows} 条, 未登记系列 行李箱{len(sku_unreg_lug)}天/包袋{len(sku_unreg_bag)}天')
 
 # 更新时间戳
 os.makedirs(os.path.join(BASE, '_cached_data'), exist_ok=True)

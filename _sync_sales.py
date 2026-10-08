@@ -5,7 +5,7 @@
 """
 import pandas as pd
 import openpyxl
-import os, time, sys
+import os, re, time, sys
 sys.stdout.reconfigure(encoding='utf-8')
 from datetime import datetime, timedelta
 
@@ -90,6 +90,12 @@ def sync_month(ym, target_wb):
         return
     
     df = pd.read_excel(source_file)
+    # 防御：校验必需列，缺列则跳过而不是崩溃（2026-08-07 修复：对比文件误入导致闪退）
+    req_cols = ['日期', '店铺', '实际销售额']
+    missing = [c for c in req_cols if c not in df.columns]
+    if missing:
+        print(f'  [WARN] {ym}.xlsx 缺少列 {missing}，已跳过（可能不是标准月度数据源）')
+        return
     df['日期'] = pd.to_datetime(df['日期'])
     
     year = 2000 + int(ym.split('-')[0])
@@ -146,9 +152,10 @@ def main():
     print('=== 实际销售额同步 ===')
     print()
     
-    # 找到所有需要同步的月度数据文件
+    # 找到所有需要同步的月度数据文件（2026-08-07 修复：严格匹配 YY-M.xlsx 格式，
+    # 排除「24-25渠道月度实际销售对比.xlsx」这类对比/汇总文件被误判为月度数据源）
     src_dir = os.path.join(BASE, '各渠道销售数据源')
-    monthly_files = sorted([f for f in os.listdir(src_dir) if f.endswith('.xlsx') and '-' in f and f.startswith('2')])
+    monthly_files = sorted([f for f in os.listdir(src_dir) if re.match(r'^\d{2}-\d{1,2}\.xlsx$', f)])
     
     # 只处理最近修改的文件
     recent_files = []
